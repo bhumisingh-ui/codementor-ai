@@ -199,7 +199,7 @@ export default function LandingPage() {
           </motion.h1>
 
           <motion.p variants={itemVariants} className="text-lg md:text-xl text-gray-400 max-w-2xl mx-auto mb-10 leading-relaxed">
-            The AI-powered code review platform that doesn't just fix bugs—it teaches you how to avoid them. <span className="text-white">Powered by Claude 3.5 & GPT-4.</span>
+            The AI-powered code review platform that doesnt just fix bugs—it teaches you how to avoid them. <span className="text-white">Powered by Claude 3.5 & GPT-4.</span>
           </motion.p>
 
           <motion.div variants={itemVariants} className="flex flex-col sm:flex-row items-center justify-center gap-4">
@@ -240,9 +240,9 @@ export default function LandingPage() {
                   <pre className="text-gray-300 pl-2">
                     <code>
                       <span className="text-pink-400">const</span> analyzeCode = <span className="text-[#00ff9d]">async</span> (snippet) ={'>'} {'{'} {'\n'}
-                      {'  '}<span className="text-gray-500">// AI analyzing complexity...</span> {'\n'}
+                      {'  '}<span className="text-gray-500">  AI analyzing complexity...</span> {'\n'}
                       {'  '}<span className="text-pink-400">if</span> (snippet.complexity {'>'} <span className="text-orange-400">O(n^2)</span>) {'{'} {'\n'}
-                      {'    '}<span className="text-[#00ff9d]">return</span> <span className="text-green-300">"Optimize with HashMap"</span>; {'\n'}
+                      {'    '}<span className="text-[#00ff9d]">return</span> <span className="text-green-300">Optimize with HashMap</span>; {'\n'}
                       {'  '} {'}'} {'\n'}
                       {'}'}
                     </code>
