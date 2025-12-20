@@ -59,6 +59,26 @@ export default function EditorPage() {
   const [code, setCode] = useState("// Write your code here or upload a file...\n\nfunction analyzeData(input) {\n  let results = [];\n  for (let i = 0; i < input.length; i++) {\n    for (let j = 0; j < input.length; j++) {\n      if (input[i] === input[j]) {\n        results.push(input[i]);\n      }\n    }\n  }\n  return results;\n}");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [reviewResult, setReviewResult] = useState(null);
+  const [uploadError, setUploadError] = useState(null);
+  const [fileName, setFileName] = useState(null);
+  const fileInputRef = useRef(null);
+ 
+  const EXT_TO_LANG = {
+    js: "javascript",
+    mjs: "javascript",
+    cjs: "javascript",
+    jsx: "javascript",
+    py: "python",
+    java: "java",
+    cpp: "cpp",
+    cc: "cpp",
+    cxx: "cpp",
+    hpp: "cpp",
+    hh: "cpp",
+    hxx: "cpp",
+    go: "go",
+  };
+  const ACCEPT_EXT = ".js,.mjs,.cjs,.jsx,.py,.java,.cpp,.cc,.cxx,.hpp,.hh,.hxx,.go";
   
   // Fake AI Analysis function
   const handleAnalyze = async () => {
@@ -70,6 +90,40 @@ export default function EditorPage() {
     
     setReviewResult(MOCK_REVIEW);
     setIsAnalyzing(false);
+  };
+
+  const handleUploadClick = () => {
+    setUploadError(null);
+    if (fileInputRef.current) fileInputRef.current.click();
+  };
+
+  const handleFileChange = async (e) => {
+    try {
+      const file = e.target.files?.[0];
+      if (!file) return;
+
+      const name = file.name || "";
+      const ext = name.includes(".") ? name.split(".").pop().toLowerCase() : "";
+      const lang = EXT_TO_LANG[ext];
+
+      if (!lang) {
+        setUploadError("Unsupported file type. Allowed: JavaScript, Python, Java, C++, Go.");
+        // Reset input so the same file can be chosen again
+        e.target.value = "";
+        return;
+      }
+
+      const text = await file.text();
+      setLanguage(lang);
+      setCode(text);
+      setFileName(name);
+      setReviewResult(null);
+      setUploadError(null);
+      // Allow re-selecting the same file
+      e.target.value = "";
+    } catch (err) {
+      setUploadError("Failed to read file. Please try again.");
+    }
   };
 
   const editorOptions = {
@@ -121,10 +175,28 @@ export default function EditorPage() {
         </div>
 
         <div className="flex items-center gap-3">
-          <button className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-400 hover:text-white transition">
+          {/* Hidden file input for uploads */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept={ACCEPT_EXT}
+            className="hidden"
+            onChange={handleFileChange}
+          />
+
+          <button
+            onClick={handleUploadClick}
+            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-400 hover:text-white transition"
+          >
             <Upload className="w-4 h-4" />
             Upload File
           </button>
+
+          {fileName && (
+            <span className="text-xs text-gray-500 truncate max-w-[180px]" title={fileName}>
+              {fileName}
+            </span>
+          )}
           <button 
             onClick={handleAnalyze}
             disabled={isAnalyzing}
@@ -144,6 +216,13 @@ export default function EditorPage() {
           </button>
         </div>
       </header>
+
+      {/* Upload error banner */}
+      {uploadError && (
+        <div className="px-6 py-2 bg-red-500/10 text-red-400 border-b border-red-500/20 text-sm" aria-live="polite">
+          {uploadError}
+        </div>
+      )}
 
       {/* --- MAIN SPLIT LAYOUT --- */}
       <main className="flex-1 flex overflow-hidden">
