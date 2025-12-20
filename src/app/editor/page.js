@@ -13,7 +13,9 @@ import {
   Cpu, 
   Zap,
   FileCode,
-  ArrowLeft
+  ArrowLeft,
+  ClipboardCopy,
+  ClipboardPaste
 } from "lucide-react";
 import Link from "next/link";
 
@@ -61,6 +63,8 @@ export default function EditorPage() {
   const [reviewResult, setReviewResult] = useState(null);
   const [uploadError, setUploadError] = useState(null);
   const [fileName, setFileName] = useState(null);
+  const [copied, setCopied] = useState(false);
+  const [pasted, setPasted] = useState(false);
   const fileInputRef = useRef(null);
  
   const EXT_TO_LANG = {
@@ -90,6 +94,29 @@ export default function EditorPage() {
     
     setReviewResult(MOCK_REVIEW);
     setIsAnalyzing(false);
+  };
+
+  const handleCopyAll = async () => {
+    try {
+      await navigator.clipboard.writeText(code || "");
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1200);
+    } catch (err) {
+      console.error("Clipboard copy failed", err);
+    }
+  };
+
+  const handlePasteReplace = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (typeof text === "string" && text.length > 0) {
+        setCode(text);
+        setPasted(true);
+        setTimeout(() => setPasted(false), 1200);
+      }
+    } catch (err) {
+      console.error("Clipboard paste failed", err);
+    }
   };
 
   const handleUploadClick = () => {
@@ -183,6 +210,30 @@ export default function EditorPage() {
             className="hidden"
             onChange={handleFileChange}
           />
+
+          <button
+            onClick={handleCopyAll}
+            className="flex items-center gap-2 px-3 py-2 text-sm text-gray-400 hover:text-white transition"
+            title="Copy all code"
+          >
+            <ClipboardCopy className="w-4 h-4" />
+            Copy All
+          </button>
+
+          <button
+            onClick={handlePasteReplace}
+            className="flex items-center gap-2 px-3 py-2 text-sm text-gray-400 hover:text-white transition"
+            title="Paste and replace"
+          >
+            <ClipboardPaste className="w-4 h-4" />
+            Paste
+          </button>
+
+          {(copied || pasted) && (
+            <span className={`text-xs ${copied ? 'text-[#00ff9d]' : 'text-blue-400'}`}> 
+              {copied ? 'Copied' : 'Pasted'}
+            </span>
+          )}
 
           <button
             onClick={handleUploadClick}
