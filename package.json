@@ -10,9 +10,12 @@
   },
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",
+    "bcryptjs": "^3.0.3",
     "clsx": "^2.1.1",
     "framer-motion": "^12.23.26",
+    "jsonwebtoken": "^9.0.3",
     "lucide-react": "^0.561.0",
+    "mongoose": "^9.0.2",
     "next": "16.0.10",
     "react": "19.2.1",
     "react-dom": "19.2.1",
