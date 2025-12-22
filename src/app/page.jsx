@@ -139,32 +139,7 @@ export default function LandingPage() {
         }}
       />
 
-      {/* Navigation */}
-      <nav className="fixed w-full z-50 top-0 border-b border-white/10 bg-[#050505]/80 backdrop-blur-xl">
-        <div className="container mx-auto px-6 h-16 flex items-center justify-between">
-          <motion.div 
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            className="flex items-center gap-2 font-bold text-xl tracking-tighter"
-          >
-            <div className="p-1.5 bg-[#00ff9d]/10 rounded-lg border border-[#00ff9d]/20">
-              <Terminal className="w-5 h-5 text-[#00ff9d]" />
-            </div>
-            <span>CodeMentor<span className="text-[#00ff9d]">.AI</span></span>
-          </motion.div>
-          
-          <div className="flex items-center gap-6">
-            <Link href="/login" className="text-sm font-medium text-gray-400 hover:text-white transition">
-              Log In
-            </Link>
-            <Link href="/signup">
-              <button className="px-4 py-2 text-sm font-bold bg-[#00ff9d] text-black rounded-md hover:bg-[#00ff9d]/90 transition shadow-[0_0_15px_rgba(0,255,157,0.4)]">
-                Get Started
-              </button>
-            </Link>
-          </div>
-        </div>
-      </nav>
+      {/* Global Navbar is rendered from layout; add top padding */}
 
       <main className="relative z-10 pt-32 pb-20">
         <motion.div 
@@ -203,7 +178,7 @@ export default function LandingPage() {
           </motion.p>
 
           <motion.div variants={itemVariants} className="flex flex-col sm:flex-row items-center justify-center gap-4">
-            <Link href="/signup" className="w-full sm:w-auto">
+            <Link href="/start-analysis" className="w-full sm:w-auto">
               <button className="btn-analysis w-full sm:w-auto flex items-center justify-center gap-2">
                 Start Analysis
                 <ArrowRight className="w-5 h-5" />

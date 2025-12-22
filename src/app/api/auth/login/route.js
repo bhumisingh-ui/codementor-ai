@@ -34,7 +34,7 @@ export async function POST(req) {
     }
 
     const token = jwt.sign(
-      { id: user._id, email: user.email },
+      { id: user._id, email: user.email, username: user.username }, // we did this to have username available in the token for Navbar
       process.env.JWT_SECRET,
       { expiresIn: "7d" }
     );
