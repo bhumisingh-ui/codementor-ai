@@ -1,36 +1,63 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
+# 🚀 CodeMentor AI
 
-## Getting Started
+![Next.js](https://img.shields.io/badge/Next.js-000000?logo=nextdotjs&logoColor=white)
+![React](https://img.shields.io/badge/React-20232A?logo=react&logoColor=61DAFB)
+![MongoDB](https://img.shields.io/badge/MongoDB-47A248?logo=mongodb&logoColor=white)
+![OpenAI](https://img.shields.io/badge/AI-OpenAI-412991)
+![License](https://img.shields.io/badge/License-MIT-green)
 
-First, run the development server:
+**CodeMentor AI** is an AI-powered code review & learning platform that helps developers write better, cleaner, and smarter code.
 
+---
+
+## 🎯 What It Does
+- Reviews code using AI
+- Detects bugs, warnings & bad practices
+- Explains *why* something is wrong
+- Helps users learn, not just fix
+
+---
+
+## 🖥️ App Preview
+
+### 🧠 AI Code Review
+![AI Review Demo](https://media.giphy.com/media/qgQUggAC3Pfv687qPC/giphy.gif)
+
+### 💻 Monaco Code Editor
+![Editor Demo](https://media.giphy.com/media/26tn33aiTi1jkl6H6/giphy.gif)
+
+### 📊 Progress & Insights
+![Charts Demo](https://media.giphy.com/media/3o7aD2saalBwwftBIY/giphy.gif)
+
+*(Replace these GIFs with your own screen recordings later)*
+
+---
+
+## ✨ Features
+- 🧠 AI-powered code review
+- 💻 Monaco Editor (VS Code–like)
+- 🌐 Multi-language support (JS, Python, Java, C++, Go)
+- 📁 Paste & file upload support
+- 👥 User authentication
+- 📊 Progress tracking (Chart.js)
+- 👨‍🏫 AI Tutor mode
+- 🤝 Collaborative coding (planned)
+
+---
+
+## 🛠 Tech Stack
+- **Frontend:** Next.js, React, Tailwind CSS  
+- **Editor:** Monaco Editor  
+- **Backend:** Next.js API Routes  
+- **Database:** MongoDB Atlas  
+- **AI:** OpenAI API  
+- **Auth:** Custom authentication
+
+---
+
+## ⚙️ Setup
 ```bash
+git clone https://github.com/your-username/codementor-ai
+cd codementor-ai
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
-
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
-
-You can start editing the page by modifying `app/page.js`. The page auto-updates as you edit the file.
-
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
