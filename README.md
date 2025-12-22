@@ -27,9 +27,6 @@
 ![Editor Demo](https://media.giphy.com/media/26tn33aiTi1jkl6H6/giphy.gif)
 
 ### 📊 Progress & Insights
-![Charts Demo](https://media.giphy.com/media/3o7aD2saalBwwftBIY/giphy.gif)
-
-*(Replace these GIFs with your own screen recordings later)*
 
 ---
 
