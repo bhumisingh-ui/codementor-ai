@@ -164,7 +164,7 @@ export default function EditorPage() {
   };
 
   return (
-    <div className="h-screen bg-[#050505] text-white flex flex-col overflow-hidden font-sans">
+    <div className="h-screen bg-[#050505] text-white flex flex-col overflow-hidden font-sans pt-16">
       
       {/* --- TOP BAR --- */}
       <header className="h-16 border-b border-white/10 bg-[#0a0a0a] flex items-center justify-between px-6 z-20">
