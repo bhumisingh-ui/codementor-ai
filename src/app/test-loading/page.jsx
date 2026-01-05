@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 export default async function TestLoadingPage() {
   // 🛑 Force the server to wait 3 seconds before sending the page
   await new Promise((resolve) => setTimeout(resolve, 3000));
@@ -10,12 +12,12 @@ export default async function TestLoadingPage() {
       <p className="text-gray-400">
         If you are reading this, you just watched the loader for 3 seconds.
       </p>
-      <a 
-        href="/" 
+      <Link
+        href="/"
         className="mt-8 px-6 py-3 border border-white/20 rounded hover:bg-white/10 transition"
       >
         Go Home
-      </a>
+      </Link>
     </div>
   );
 }
