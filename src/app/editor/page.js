@@ -1,4 +1,4 @@
-"use client";
+"use client";  
 
 import { useState, useRef } from "react";
 import Editor from "@monaco-editor/react";
@@ -85,16 +85,53 @@ export default function EditorPage() {
   const ACCEPT_EXT = ".js,.mjs,.cjs,.jsx,.py,.java,.cpp,.cc,.cxx,.hpp,.hh,.hxx,.go";
   
   // Fake AI Analysis function
-  const handleAnalyze = async () => {
-    setIsAnalyzing(true);
-    setReviewResult(null);
-    
-    // Simulate API delay
-    await new Promise(r => setTimeout(r, 2000));
-    
-    setReviewResult(MOCK_REVIEW);
+ const handleAnalyze = async () => {
+  if (!code?.trim()) return;
+
+  setIsAnalyzing(true);
+  setReviewResult(null);
+
+  try {
+    const res = await fetch("/api/review", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        code,
+        language,
+      }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || "Analysis failed");
+    }
+
+    const data = await res.json();
+
+    // data = { score, summary, issues }
+    setReviewResult(data);
+  } catch (err) {
+    console.error(err);
+    setReviewResult({
+      score: 0,
+      summary: "Failed to analyze code.",
+      issues: [
+        {
+          id: 1,
+          type: "critical",
+          line: 0,
+          msg: err.message || "Unknown error",
+          fix: "Check server logs or API key configuration.",
+        },
+      ],
+    });
+  } finally {
     setIsAnalyzing(false);
-  };
+  }
+};
+
 
   const handleCopyAll = async () => {
     try {

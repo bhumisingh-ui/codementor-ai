@@ -15,8 +15,14 @@ export async function POST(req) {
       );
     }
 
-    const prompt = `
-You are a strict code reviewer.
+    const prompt = `You are a friendly AI mentor helping students improve their code.
+
+Guidelines:
+- Be concise and beginner-friendly
+- Explain issues in simple words
+- Focus on learning and improvement
+- Avoid harsh or judgmental language
+- Prefer short, meaningful feedback
 
 Analyze the following ${language} code.
 Return ONLY valid JSON in this format:
@@ -27,6 +33,12 @@ Return ONLY valid JSON in this format:
   "suggestions": [{ "message": string }]
 }
 
+Rules:
+- Score should reflect overall code quality (0–100)
+- Critical issues = bugs, crashes, infinite loops
+- Warnings = performance or bad practices
+- Suggestions = style or learning tips (short)
+
 Code:
 ${code}
 `;
@@ -36,23 +48,55 @@ ${code}
       contents: prompt,
     });
 
-   const raw = response.text;
+    const raw = response.text;
+    const match = raw.match(/\{[\s\S]*\}/);
+    if (!match) throw new Error("No JSON found in response");
 
-const match = raw.match(/\{[\s\S]*\}/);  //raw.match is used to extract JSON object from text
-if (!match) {
-  throw new Error("No JSON found in Gemini response");
-}
+    const geminiResult = JSON.parse(match[0]);
 
-const json = JSON.parse(match[0]);
-return Response.json(json);
+    let id = 1;
+    const issues = [];
+
+    for (const i of geminiResult.criticalIssues || []) {
+      issues.push({
+        id: id++,
+        type: "critical",
+        line: i.line,
+        msg: i.message,
+        fix: "Add proper termination or refactor logic."
+      });
+    }
+
+    for (const i of geminiResult.warnings || []) {
+      issues.push({
+        id: id++,
+        type: "warning",
+        line: i.line,
+        msg: i.message,
+        fix: "Optimize or simplify this logic."
+      });
+    }
+
+    for (const i of geminiResult.suggestions || []) {
+      issues.push({
+        id: id++,
+        type: "style",
+        line: 0,
+        msg: i.message,
+        fix: "Apply best practice."
+      });
+    }
+
+    return Response.json({
+      score: geminiResult.score ?? 0,
+      summary: "AI-based static analysis completed.",
+      issues
+    });
 
   } catch (err) {
     console.error(err);
     return Response.json(
-      {
-        error: "Failed to analyze code",
-        details: err.message,
-      },
+      { error: "Failed to analyze code", details: err.message },
       { status: 500 }
     );
   }
