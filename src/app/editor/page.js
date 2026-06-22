@@ -83,54 +83,68 @@ export default function EditorPage() {
     go: "go",
   };
   const ACCEPT_EXT = ".js,.mjs,.cjs,.jsx,.py,.java,.cpp,.cc,.cxx,.hpp,.hh,.hxx,.go";
+  const securityFindings = reviewResult?.securityFindings || [];
+  const aiFindings = reviewResult?.finalReview || reviewResult?.issues || [];
   
-  // Fake AI Analysis function
- const handleAnalyze = async () => {
-  if (!code?.trim()) return;
+  // Run the review pipeline for the current code.
+  const handleAnalyze = async () => {
+    if (!code?.trim()) return;
 
-  setIsAnalyzing(true);
-  setReviewResult(null);
+    setIsAnalyzing(true);
+    setReviewResult(null);
 
-  try {
-    const res = await fetch("/api/review", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        code,
-        language,
-      }),
-    });
-
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error || "Analysis failed");
-    }
-
-    const data = await res.json();
-
-    // data = { score, summary, issues }
-    setReviewResult(data);
-  } catch (err) {
-    console.error(err);
-    setReviewResult({
-      score: 0,
-      summary: "Failed to analyze code.",
-      issues: [
-        {
-          id: 1,
-          type: "critical",
-          line: 0,
-          msg: err.message || "Unknown error",
-          fix: "Check server logs or API key configuration.",
+    try {
+      const res = await fetch("/api/review", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
         },
-      ],
-    });
-  } finally {
-    setIsAnalyzing(false);
-  }
-};
+        body: JSON.stringify({
+          code,
+          language,
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "Analysis failed");
+      }
+
+      const data = await res.json();
+
+      // Keep the response as-is so the UI can show security and AI results separately.
+      setReviewResult(data);
+    } catch (err) {
+      console.error(err);
+      setReviewResult({
+        score: 0,
+        summary: "Failed to analyze code.",
+        securityFindings: [],
+        aiReview: {},
+        finalReview: [
+          {
+            id: 1,
+            type: "critical",
+            line: 0,
+            msg: err.message || "Unknown error",
+            fix: "Check server logs or API key configuration.",
+            source: "ai",
+          },
+        ],
+        issues: [
+          {
+            id: 1,
+            type: "critical",
+            line: 0,
+            msg: err.message || "Unknown error",
+            fix: "Check server logs or API key configuration.",
+          },
+        ],
+      });
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
 
 
   const handleCopyAll = async () => {
@@ -281,7 +295,7 @@ export default function EditorPage() {
           </button>
 
           {fileName && (
-            <span className="text-xs text-gray-500 truncate max-w-[180px]" title={fileName}>
+            <span className="text-xs text-gray-500 truncate max-w-45" title={fileName}>
               {fileName}
             </span>
           )}
@@ -339,11 +353,11 @@ export default function EditorPage() {
         </section>
 
         {/* RIGHT: AI REVIEW PANEL */}
-        <section className="w-[450px] bg-[#0a0a0a] flex flex-col border-l border-white/5 relative z-10">
+        <section className="w-112.5 bg-[#0a0a0a] flex flex-col border-l border-white/5 relative z-10">
           <div className="p-4 border-b border-white/10 flex items-center justify-between bg-[#0f0f0f]">
             <h2 className="font-bold flex items-center gap-2">
               <Cpu className="w-4 h-4 text-[#00ff9d]" />
-              AI Review
+              Security + AI Review
             </h2>
             {reviewResult && (
               <span className={`text-sm font-bold px-2 py-0.5 rounded ${
@@ -395,17 +409,72 @@ export default function EditorPage() {
                   <div className="p-4 rounded-lg bg-white/5 border border-white/10">
                     <h3 className="text-xs uppercase tracking-wider text-gray-500 mb-2 font-bold">Summary</h3>
                     <p className="text-sm text-gray-300 leading-relaxed">
-                      {reviewResult.summary}
+                      {reviewResult.summary || reviewResult.aiReview?.summary || "Analysis completed."}
                     </p>
                   </div>
 
-                  {/* Issues List */}
+                  {/* Security Findings */}
                   <div className="space-y-4">
-                    <h3 className="text-xs uppercase tracking-wider text-gray-500 font-bold">Detected Issues</h3>
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-xs uppercase tracking-wider text-gray-500 font-bold">Semgrep Findings</h3>
+                      <span className="text-[10px] uppercase tracking-widest text-gray-500">
+                        {securityFindings.length} found
+                      </span>
+                    </div>
+
+                    {securityFindings.length === 0 ? (
+                      <div className="p-4 rounded-lg bg-[#050505] border border-white/10 text-sm text-gray-500">
+                        No Semgrep issues found.
+                      </div>
+                    ) : (
+                      securityFindings.map((issue, index) => (
+                        <motion.div 
+                          key={`${issue.rule}-${issue.line}-${index}`}
+                          initial={{ opacity: 0, x: 20 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          transition={{ delay: index * 0.08 }}
+                          className="p-4 rounded-lg bg-[#050505] border border-white/10 hover:border-white/20 transition group"
+                        >
+                          <div className="flex items-start justify-between mb-2">
+                            <div className="flex items-center gap-2">
+                              <XCircle className="w-4 h-4 text-red-500" />
+                              <span className="text-xs font-bold uppercase text-red-500">security</span>
+                            </div>
+                            <span className="text-xs font-mono text-gray-600">Line {issue.line || 0}</span>
+                          </div>
+
+                          <p className="text-sm text-gray-300 mb-2">{issue.message || issue.msg}</p>
+                          <p className="text-xs text-gray-500 font-mono mb-3">Rule: {issue.rule}</p>
+
+                          <div className="bg-[#111] p-3 rounded border border-white/5">
+                            <div className="flex items-center gap-2 mb-1">
+                              <Zap className="w-3 h-3 text-[#00ff9d]" />
+                              <span className="text-xs text-[#00ff9d] font-bold">Severity</span>
+                            </div>
+                            <p className="text-xs text-gray-400 font-mono">{issue.severity}</p>
+                          </div>
+                        </motion.div>
+                      ))
+                    )}
+                  </div>
+
+                  {/* AI Review List */}
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-xs uppercase tracking-wider text-gray-500 font-bold">AI Findings</h3>
+                      <span className="text-[10px] uppercase tracking-widest text-gray-500">
+                        {aiFindings.length} found
+                      </span>
+                    </div>
                     
-                    {reviewResult.issues.map((issue, index) => (
+                    {aiFindings.length === 0 ? (
+                      <div className="p-4 rounded-lg bg-[#050505] border border-white/10 text-sm text-gray-500">
+                        No AI issues found.
+                      </div>
+                    ) : (
+                      aiFindings.map((issue, index) => (
                       <motion.div 
-                        key={issue.id}
+                        key={issue.id || `${issue.type}-${issue.line}-${index}`}
                         initial={{ opacity: 0, x: 20 }}
                         animate={{ opacity: 1, x: 0 }}
                         transition={{ delay: index * 0.1 }}
@@ -441,7 +510,8 @@ export default function EditorPage() {
                           Auto Fix
                         </button>
                       </motion.div>
-                    ))}
+                    ))
+                    )}
                   </div>
                 </motion.div>
               )}

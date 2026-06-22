@@ -28,8 +28,8 @@ export default function LoginPage() {
         return;
       }
 
-      // IMPORTANT: full reload so middleware reads cookie
-      window.location.href = "/dashboard";
+      // IMPORTANT: full reload so protected routes see the auth cookie
+      window.location.href = "/profile";
 
     } catch (err) {
       setError("Something went wrong. Please try again.");

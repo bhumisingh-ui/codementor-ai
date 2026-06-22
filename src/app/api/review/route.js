@@ -1,4 +1,5 @@
 import { GoogleGenAI } from "@google/genai";
+import { securityAgent } from "../../../../services/agents/securityAgent.js";
 
 const ai = new GoogleGenAI({
   apiKey: process.env.GEMINI_API_KEY,
@@ -15,6 +16,9 @@ export async function POST(req) {
       );
     }
 
+    // Run Semgrep first so security findings can guide the AI review.
+    const securityFindings = await securityAgent(code, language);
+
     const prompt = `You are a friendly AI mentor helping students improve their code.
 
 Guidelines:
@@ -23,6 +27,9 @@ Guidelines:
 - Focus on learning and improvement
 - Avoid harsh or judgmental language
 - Prefer short, meaningful feedback
+
+  Semgrep Findings:
+  ${JSON.stringify(securityFindings, null, 2)}
 
 Analyze the following ${language} code.
 Return ONLY valid JSON in this format:
@@ -55,42 +62,63 @@ ${code}
     const geminiResult = JSON.parse(match[0]);
 
     let id = 1;
-    const issues = [];
+    const finalReview = [];
 
+    // Keep Semgrep findings in the final review list.
+    for (const finding of securityFindings) {
+      finalReview.push({
+        id: id++,
+        type: "security",
+        line: finding.line,
+        msg: `${finding.rule}: ${finding.message}`,
+        fix: `Severity: ${finding.severity}`,
+        rule: finding.rule,
+        severity: finding.severity,
+        source: "semgrep",
+      });
+    }
+
+    // Merge AI findings into the same list.
     for (const i of geminiResult.criticalIssues || []) {
-      issues.push({
+      finalReview.push({
         id: id++,
         type: "critical",
         line: i.line,
         msg: i.message,
-        fix: "Add proper termination or refactor logic."
+        fix: "Add proper termination or refactor logic.",
+        source: "ai",
       });
     }
 
     for (const i of geminiResult.warnings || []) {
-      issues.push({
+      finalReview.push({
         id: id++,
         type: "warning",
         line: i.line,
         msg: i.message,
-        fix: "Optimize or simplify this logic."
+        fix: "Optimize or simplify this logic.",
+        source: "ai",
       });
     }
 
     for (const i of geminiResult.suggestions || []) {
-      issues.push({
+      finalReview.push({
         id: id++,
         type: "style",
         line: 0,
         msg: i.message,
-        fix: "Apply best practice."
+        fix: "Apply best practice.",
+        source: "ai",
       });
     }
 
     return Response.json({
+      securityFindings,
+      aiReview: geminiResult,
+      finalReview,
       score: geminiResult.score ?? 0,
       summary: "AI-based static analysis completed.",
-      issues
+      issues: finalReview,
     });
 
   } catch (err) {

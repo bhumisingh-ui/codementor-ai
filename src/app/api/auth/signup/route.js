@@ -39,9 +39,11 @@ export async function POST(req) {
       { status: 201 }
     );
   } catch (err) {
-    return NextResponse.json(
-      { error: "Signup failed" },
-      { status: 500 }
-    );
-  }
+  console.error("SIGNUP ERROR:", err);
+
+  return NextResponse.json(
+    { error: err.message || "Signup failed" },
+    { status: 500 }
+  );
+}
 }
