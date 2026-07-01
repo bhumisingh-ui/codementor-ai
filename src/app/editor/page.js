@@ -89,6 +89,8 @@ export default function EditorPage() {
   const ACCEPT_EXT = ".js,.mjs,.cjs,.jsx,.py,.java,.cpp,.cc,.cxx,.hpp,.hh,.hxx,.go";
   const securityFindings = reviewResult?.securityFindings || [];
   const aiFindings = reviewResult?.finalReview || reviewResult?.issues || [];
+  const bugFindingsFromResult = reviewResult?.bugFindings || [];
+  const aiReviewSummary = reviewResult?.aiReview || {};
   
   // Run the review pipeline for the current code.
   const handleAnalyze = async () => {
@@ -486,6 +488,30 @@ export default function EditorPage() {
 
                   {/* Security Findings */}
                   <div className="space-y-4">
+                    {/* Bug Agent Findings */}
+                    <div className="mb-4">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-xs uppercase tracking-wider text-gray-500 font-bold">Bug Agent Findings</h3>
+                        <span className="text-[10px] uppercase tracking-widest text-gray-500">
+                          {bugFindingsFromResult.length} found
+                        </span>
+                      </div>
+
+                      {bugFindingsFromResult.length === 0 ? (
+                        <div className="p-4 rounded-lg bg-[#050505] border border-white/10 text-sm text-gray-500">No bug findings.</div>
+                      ) : (
+                        bugFindingsFromResult.map((f, idx) => (
+                          <div key={`${f.line}-${idx}`} className="p-3 mt-2 rounded bg-[#050505] border border-white/10">
+                            <div className="flex items-center justify-between mb-1">
+                              <strong className="text-xs text-[#00ff9d]">{f.severity}</strong>
+                              <span className="text-xs text-gray-500">Line {f.line}</span>
+                            </div>
+                            <p className="text-sm text-gray-300">{f.message}</p>
+                            <p className="text-xs text-gray-500 mt-2">Suggestion: {f.suggestion}</p>
+                          </div>
+                        ))
+                      )}
+                    </div>
                     <div className="flex items-center justify-between">
                       <h3 className="text-xs uppercase tracking-wider text-gray-500 font-bold">Semgrep Findings</h3>
                       <span className="text-[10px] uppercase tracking-widest text-gray-500">

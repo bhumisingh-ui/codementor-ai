@@ -1,166 +1,65 @@
 import { GoogleGenAI } from "@google/genai";
 import { securityAgent } from "../agents/securityAgent.js";
+import { bugAgent } from "../agents/bugAgent.js";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
-function parseSemgrepOutput(raw) {
+function safeParseAI(raw) {
+  if (typeof raw !== "string") return {};
+  const m = raw.match(/\{[\s\S]*\}/);
+  if (!m) return {};
   try {
-    const data = JSON.parse(raw || "{}");
-    const results = Array.isArray(data.results) ? data.results : [];
-
-    return results.map((item) => ({
-      type: "security",
-      line: item?.start?.line || 0,
-      rule: item?.check_id || "unknown-rule",
-      severity: item?.extra?.severity || "INFO",
-      message: item?.extra?.message || "Security issue found",
-    }));
+    return JSON.parse(m[0]);
   } catch {
-    return [];
+    try {
+      return JSON.parse(m[0].replace(/,\s*}/g, "}").replace(/,\s*]/g, "]"));
+    } catch {
+      return {};
+    }
   }
-}
-
-export async function runRepoSummary(repoName, repoData) {
-  // `repoData` contains joined results from the multi-agent pipeline.
-  // The security agent runs on every file, while bug and performance are
-  // placeholders for future implementation.
-  const prompt = `You are a friendly AI mentor helping students improve repository quality.
-
-Repository: ${repoName}
-Files analyzed: ${repoData.filesAnalyzed}
-Security findings: ${repoData.securityFindings.length}
-Bug findings: ${repoData.bugFindings.length}
-Performance findings: ${repoData.performanceFindings.length}
-
-Summary by file:
-${JSON.stringify(repoData.fileSummaries, null, 2)}
-
-Analyze these agent outputs and return ONLY valid JSON with the following fields:
-{
-  "summary": string,
-  "majorRisks": [{ "message": string }],
-  "prioritizedIssues": [{ "message": string, "severity": string }],
-  "actionableSuggestions": [{ "message": string }]
-}
-
-Merge overlapping issues, rank by severity, prioritize critical issues, and generate actionable suggestions.
-`;
-
-  const response = await ai.models.generateContent({
-    model: "gemini-2.5-flash",
-    contents: prompt,
-  });
-
-  const raw = response.text;
-  const match = raw.match(/\{[\s\S]*\}/);
-  return match
-    ? JSON.parse(match[0])
-    : {
-        summary: "Could not generate repository summary.",
-        majorRisks: [],
-        prioritizedIssues: [],
-        actionableSuggestions: [],
-      };
 }
 
 export async function runCodeReview(code, language) {
   const securityFindings = await securityAgent(code, language);
+  const bugFindings = await bugAgent(code, language);
 
-  const prompt = `You are a friendly AI mentor helping students improve their code.
+  const prompt = `Analyze the code and semgrep findings. Return JSON {"score":number,"criticalIssues":[...],"warnings":[...],"suggestions":[...]}`;
+  const resp = await ai.models.generateContent({ model: "gemini-2.5-flash", contents: prompt + "\n\nCode:\n" + code });
 
-Guidelines:
-- Be concise and beginner-friendly
-- Explain issues in simple words
-- Focus on learning and improvement
-- Avoid harsh or judgmental language
-- Prefer short, meaningful feedback
-
-  Semgrep Findings:
-  ${JSON.stringify(securityFindings, null, 2)}
-
-Analyze the following ${language} code.
-Return ONLY valid JSON in this format:
-{
-  "score": number,
-  "criticalIssues": [{ "line": number, "message": string }],
-  "warnings": [{ "line": number, "message": string }],
-  "suggestions": [{ "message": string }]
-}
-
-Rules:
-- Score should reflect overall code quality (0–100)
-- Critical issues = bugs, crashes, infinite loops
-- Warnings = performance or bad practices
-- Suggestions = style or learning tips (short)
-
-Code:
-${code}
-`;
-
-  const response = await ai.models.generateContent({
-    model: "gemini-2.5-flash",
-    contents: prompt,
-  });
-
-  const raw = response.text;
-  const match = raw.match(/\{[\s\S]*\}/);
-  const geminiResult = match ? JSON.parse(match[0]) : { score: 0, criticalIssues: [], warnings: [], suggestions: [] };
+  const aiResult = safeParseAI(resp.text);
+  aiResult.score = aiResult.score ?? 0;
+  aiResult.criticalIssues = Array.isArray(aiResult.criticalIssues) ? aiResult.criticalIssues : [];
+  aiResult.warnings = Array.isArray(aiResult.warnings) ? aiResult.warnings : [];
+  aiResult.suggestions = Array.isArray(aiResult.suggestions) ? aiResult.suggestions : [];
 
   let id = 1;
   const finalReview = [];
 
-  for (const finding of securityFindings) {
-    finalReview.push({
-      id: id++,
-      type: "security",
-      line: finding.line,
-      msg: `${finding.rule}: ${finding.message}`,
-      fix: `Severity: ${finding.severity}`,
-      rule: finding.rule,
-      severity: finding.severity,
-      source: "semgrep",
-    });
+  for (const f of bugFindings) {
+    finalReview.push({ id: id++, type: "bug", line: f.line, msg: f.message, fix: f.suggestion || "", severity: f.severity || "medium", source: "bug-agent" });
   }
 
-  for (const i of geminiResult.criticalIssues || []) {
-    finalReview.push({
-      id: id++,
-      type: "critical",
-      line: i.line,
-      msg: i.message,
-      fix: "Add proper termination or refactor logic.",
-      source: "ai",
-    });
+  for (const f of securityFindings) {
+    finalReview.push({ id: id++, type: "security", line: f.line, msg: `${f.rule}: ${f.message}`, fix: `Severity: ${f.severity}`, rule: f.rule, severity: f.severity, source: "semgrep" });
   }
 
-  for (const i of geminiResult.warnings || []) {
-    finalReview.push({
-      id: id++,
-      type: "warning",
-      line: i.line,
-      msg: i.message,
-      fix: "Optimize or simplify this logic.",
-      source: "ai",
-    });
-  }
-
-  for (const i of geminiResult.suggestions || []) {
-    finalReview.push({
-      id: id++,
-      type: "style",
-      line: 0,
-      msg: i.message,
-      fix: "Apply best practice.",
-      source: "ai",
-    });
-  }
+  for (const i of aiResult.criticalIssues) finalReview.push({ id: id++, type: "critical", line: i.line, msg: i.message, fix: "" , source: "ai" });
+  for (const i of aiResult.warnings) finalReview.push({ id: id++, type: "warning", line: i.line, msg: i.message, fix: "", source: "ai" });
+  for (const s of aiResult.suggestions) finalReview.push({ id: id++, type: "style", line: 0, msg: s.message, fix: "", source: "ai" });
 
   return {
+    bugFindings: bugFindings || [],
     securityFindings,
-    aiReview: geminiResult,
+    aiReview: aiResult,
     finalReview,
-    score: geminiResult.score ?? 0,
+    score: aiResult.score,
     summary: "AI-based static analysis completed.",
     issues: finalReview,
   };
+}
+
+export async function runRepoSummary(repoName, repoData) {
+  const prompt = `Summarize repository ${repoName} in JSON {summary,majorRisks,prioritizedIssues,actionableSuggestions}`;
+  const resp = await ai.models.generateContent({ model: "gemini-2.5-flash", contents: prompt });
+  return safeParseAI(resp.text) || { summary: "", majorRisks: [], prioritizedIssues: [], actionableSuggestions: [] };
 }
