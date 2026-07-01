@@ -61,12 +61,16 @@ export default function EditorPage() {
   const [code, setCode] = useState("// Write your code here or upload a file...\n\nfunction analyzeData(input) {\n  let results = [];\n  for (let i = 0; i < input.length; i++) {\n    for (let j = 0; j < input.length; j++) {\n      if (input[i] === input[j]) {\n        results.push(input[i]);\n      }\n    }\n  }\n  return results;\n}");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [reviewResult, setReviewResult] = useState(null);
+  const [repoUrl, setRepoUrl] = useState("");
+  const [repoResult, setRepoResult] = useState(null);
+  const [repoError, setRepoError] = useState(null);
+  const [isRepoAnalyzing, setIsRepoAnalyzing] = useState(false);
   const [uploadError, setUploadError] = useState(null);
   const [fileName, setFileName] = useState(null);
   const [copied, setCopied] = useState(false);
   const [pasted, setPasted] = useState(false);
   const fileInputRef = useRef(null);
- 
+
   const EXT_TO_LANG = {
     js: "javascript",
     mjs: "javascript",
@@ -111,8 +115,6 @@ export default function EditorPage() {
       }
 
       const data = await res.json();
-
-      // Keep the response as-is so the UI can show security and AI results separately.
       setReviewResult(data);
     } catch (err) {
       console.error(err);
@@ -143,6 +145,39 @@ export default function EditorPage() {
       });
     } finally {
       setIsAnalyzing(false);
+    }
+  };
+
+  const handleAnalyzeRepo = async () => {
+    if (!repoUrl?.trim()) {
+      setRepoError("Enter a GitHub repository URL.");
+      return;
+    }
+
+    setRepoError(null);
+    setRepoResult(null);
+    setIsRepoAnalyzing(true);
+
+    try {
+      const res = await fetch("/api/github-review", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ repoUrl: repoUrl.trim() }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Repository analysis failed.");
+      }
+
+      setRepoResult(data);
+    } catch (err) {
+      console.error(err);
+      setRepoError(err.message || "Repository analysis failed.");
+    } finally {
+      setIsRepoAnalyzing(false);
     }
   };
 
@@ -318,6 +353,42 @@ export default function EditorPage() {
           </button>
         </div>
       </header>
+
+      <div className="px-6 py-4 border-b border-white/10 bg-[#090909]">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex-1 min-w-0">
+            <label htmlFor="repoUrl" className="block text-xs uppercase tracking-widest text-gray-500 mb-2">
+              Analyze public GitHub repository
+            </label>
+            <input
+              id="repoUrl"
+              value={repoUrl}
+              onChange={(event) => setRepoUrl(event.target.value)}
+              placeholder="https://github.com/user/project"
+              className="w-full rounded border border-white/10 bg-[#050505] px-4 py-3 text-sm text-white placeholder:text-gray-500 focus:outline-none focus:border-[#00ff9d]"
+            />
+          </div>
+
+          <button
+            onClick={handleAnalyzeRepo}
+            disabled={isRepoAnalyzing}
+            className={`mt-2 sm:mt-0 inline-flex items-center justify-center gap-2 rounded px-5 py-3 text-sm font-semibold text-black transition ${isRepoAnalyzing ? 'bg-gray-600 cursor-not-allowed' : 'bg-[#00ff9d] hover:bg-white hover:scale-105'}`}
+          >
+            {isRepoAnalyzing ? "Analyzing..." : "Analyze Repository"}
+          </button>
+        </div>
+
+        {repoError && (
+          <div className="mt-3 text-sm text-red-400">{repoError}</div>
+        )}
+
+        {repoResult && (
+          <div className="mt-3 rounded-lg border border-white/10 bg-[#050505] p-3 text-sm text-gray-300">
+            <div className="font-semibold text-white">Repository: {repoResult.repoName}</div>
+            <div>Files analyzed: {repoResult.filesAnalyzed}</div>
+          </div>
+        )}
+      </div>
 
       {/* Upload error banner */}
       {uploadError && (
@@ -513,6 +584,26 @@ export default function EditorPage() {
                     ))
                     )}
                   </div>
+
+                  {repoResult && repoResult.findings?.length > 0 && (
+                    <div className="space-y-4 pt-6 border-t border-white/10">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-xs uppercase tracking-wider text-gray-500 font-bold">Repository Findings</h3>
+                        <span className="text-[10px] uppercase tracking-widest text-gray-500">
+                          {repoResult.filesAnalyzed} files
+                        </span>
+                      </div>
+
+                      {repoResult.findings.map((item) => (
+                        <div key={item.file} className="rounded-lg border border-white/10 bg-[#050505] p-4">
+                          <div className="text-xs text-gray-400 font-mono mb-2">{item.file}</div>
+                          <div className="text-sm text-gray-300">
+                            {item.securityFindings?.length ?? 0} security issue(s), {item.finalReview?.length ?? 0} AI finding(s)
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </motion.div>
               )}
 

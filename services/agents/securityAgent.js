@@ -49,7 +49,7 @@ export async function securityAgent(code, language) {
   const semgrepBin = process.env.SEMGREP_BIN || "c:/Users/ashew/Downloads/codementor-ai/.venv/Scripts/semgrep.exe";
 
   try {
-    // Write the user code to a temporary file for Semgrep.
+    // Write the user code to a temporary file for Semgyyrep.
     await writeFile(tempFile, code || "", "utf8");
 
     console.log("Running Semgrep with security-audit rules...");
