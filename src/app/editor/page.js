@@ -1,6 +1,6 @@
 "use client";  
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Editor from "@monaco-editor/react";
 import { motion, AnimatePresence } from "framer-motion";
 import { io } from "socket.io-client";
@@ -67,16 +67,21 @@ export default function EditorPage() {
   const [reviewProgress, setReviewProgress] = useState({ stage: "idle", percent: 0, message: "" });
   const [currentUserId, setCurrentUserId] = useState(null);
   const [repoUrl, setRepoUrl] = useState("");
-  const [repoResult, setRepoResult] = useState(null);
+  const [repoDialogOpen, setRepoDialogOpen] = useState(false);
   const [repoError, setRepoError] = useState(null);
   const [isRepoAnalyzing, setIsRepoAnalyzing] = useState(false);
   const [uploadError, setUploadError] = useState(null);
   const [fileName, setFileName] = useState(null);
   const [copied, setCopied] = useState(false);
   const [pasted, setPasted] = useState(false);
+  const [editorWidth, setEditorWidth] = useState(64);
   const fileInputRef = useRef(null);
   const socketRef = useRef(null);
   const activeJobIdRef = useRef(null);
+  const editorRef = useRef(null);
+  const monacoRef = useRef(null);
+  const layoutRef = useRef(null);
+  const draggingRef = useRef(false);
 
   const EXT_TO_LANG = {
     js: "javascript",
@@ -98,6 +103,105 @@ export default function EditorPage() {
   const aiFindings = reviewResult?.finalReview || reviewResult?.issues || [];
   const bugFindingsFromResult = reviewResult?.bugFindings || [];
   const aiReviewSummary = reviewResult?.aiReview || {};
+
+  const clearReviewMarkers = useCallback(() => {
+    const editor = editorRef.current;
+    const monaco = monacoRef.current;
+    const model = editor?.getModel();
+
+    if (model && monaco) {
+      monaco.editor.setModelMarkers(model, "review", []);
+    }
+  }, []);
+
+  const getReviewFindings = (review = {}) => {
+    const safeReview = review || {};
+    const finalReview = Array.isArray(safeReview.finalReview) ? safeReview.finalReview : [];
+    if (finalReview.length > 0) {
+      return finalReview;
+    }
+
+    return [
+      ...(Array.isArray(safeReview.bugFindings) ? safeReview.bugFindings : []),
+      ...(Array.isArray(safeReview.securityFindings) ? safeReview.securityFindings : []),
+      ...(Array.isArray(safeReview.issues) ? safeReview.issues : []),
+    ];
+  };
+
+  const applyReviewMarkers = useCallback((review = null) => {
+    const editor = editorRef.current;
+    const monaco = monacoRef.current;
+    const model = editor?.getModel();
+
+    if (!model || !monaco) {
+      return;
+    }
+
+    const severityMap = {
+      critical: monaco.MarkerSeverity.Error,
+      high: monaco.MarkerSeverity.Error,
+      medium: monaco.MarkerSeverity.Warning,
+      low: monaco.MarkerSeverity.Hint,
+    };
+
+    const markers = getReviewFindings(review)
+      .map((finding) => {
+        const lineNumber = Math.max(1, Number(finding?.line) || 0);
+        const type = String(finding?.type || "bug").toLowerCase();
+        const severity = String(finding?.severity || "medium").toLowerCase();
+        const message = String(finding?.message || finding?.msg || "").trim();
+        const suggestion = String(finding?.suggestion || finding?.fix || "").trim();
+
+        if (!message) {
+          return null;
+        }
+
+        return {
+          startLineNumber: lineNumber,
+          startColumn: 1,
+          endLineNumber: lineNumber,
+          endColumn: 1,
+          message: `[${type === "security" ? "Security" : "Bug"}] ${message}${suggestion ? `\n\nFix:\n${suggestion}` : ""}`,
+          severity: severityMap[severity] || monaco.MarkerSeverity.Information,
+        };
+      })
+      .filter(Boolean);
+
+    monaco.editor.setModelMarkers(model, "review", markers);
+  }, []);
+
+  const goToLine = useCallback((line) => {
+    const editor = editorRef.current;
+    const targetLine = Math.max(1, Number(line) || 0);
+
+    if (!editor || !targetLine) return;
+
+    editor.revealLine(targetLine);
+    editor.setPosition({ lineNumber: targetLine, column: 1 });
+    editor.focus();
+  }, []);
+
+  useEffect(() => {
+    const onMove = (event) => {
+      if (!draggingRef.current || !layoutRef.current) return;
+
+      const rect = layoutRef.current.getBoundingClientRect();
+      const nextWidth = ((event.clientX - rect.left) / rect.width) * 100;
+      setEditorWidth(Math.max(35, Math.min(75, nextWidth)));
+    };
+
+    const onUp = () => {
+      draggingRef.current = false;
+    };
+
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -160,7 +264,10 @@ export default function EditorPage() {
       }
 
       activeJobIdRef.current = null;
-      setReviewResult(payload.reviewResult || null);
+      const nextReview = payload.reviewResult || null;
+
+      setReviewResult(nextReview);
+      applyReviewMarkers(nextReview);
       setReviewProgress({ stage: "complete", percent: 100, message: "Review completed." });
       setIsAnalyzing(false);
     });
@@ -204,7 +311,7 @@ export default function EditorPage() {
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [currentUserId]);
+  }, [currentUserId, applyReviewMarkers]);
 
   const ensureCurrentUser = async () => {
     if (currentUserId) {
@@ -229,6 +336,8 @@ export default function EditorPage() {
   // Run the review pipeline for the current code.
   const handleAnalyze = async () => {
     if (!code?.trim()) return;
+
+    clearReviewMarkers();
 
     const userId = await ensureCurrentUser();
     if (!userId) {
@@ -350,7 +459,7 @@ export default function EditorPage() {
         throw new Error(data.error || "Repository analysis failed.");
       }
 
-      setRepoResult(data);
+      setRepoDialogOpen(false);
     } catch (err) {
       console.error(err);
       setRepoError(err.message || "Repository analysis failed.");
@@ -427,6 +536,14 @@ export default function EditorPage() {
     theme: "vs-dark",
   };
 
+  useEffect(() => {
+    clearReviewMarkers();
+  }, [code, clearReviewMarkers]);
+
+  useEffect(() => {
+    applyReviewMarkers(reviewResult);
+  }, [reviewResult, applyReviewMarkers]);
+
   return (
     <div className="h-screen bg-[#050505] text-white flex flex-col overflow-hidden font-sans pt-16">
       
@@ -440,7 +557,6 @@ export default function EditorPage() {
             <div className="p-1.5 bg-[#00ff9d]/10 rounded border border-[#00ff9d]/20">
               <FileCode className="w-5 h-5 text-[#00ff9d]" />
             </div>
-            <span className="font-bold tracking-tight">Editor<span className="text-[#00ff9d]">.AI</span></span>
           </div>
 
           {/* Language Selector */}
@@ -529,44 +645,15 @@ export default function EditorPage() {
               </>
             )}
           </button>
-        </div>
-      </header>
-
-      <div className="px-6 py-4 border-b border-white/10 bg-[#090909]">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex-1 min-w-0">
-            <label htmlFor="repoUrl" className="block text-xs uppercase tracking-widest text-gray-500 mb-2">
-              Analyze public GitHub repository
-            </label>
-            <input
-              id="repoUrl"
-              value={repoUrl}
-              onChange={(event) => setRepoUrl(event.target.value)}
-              placeholder="https://github.com/user/project"
-              className="w-full rounded border border-white/10 bg-[#050505] px-4 py-3 text-sm text-white placeholder:text-gray-500 focus:outline-none focus:border-[#00ff9d]"
-            />
-          </div>
 
           <button
-            onClick={handleAnalyzeRepo}
-            disabled={isRepoAnalyzing}
-            className={`mt-2 sm:mt-0 inline-flex items-center justify-center gap-2 rounded px-5 py-3 text-sm font-semibold text-black transition ${isRepoAnalyzing ? 'bg-gray-600 cursor-not-allowed' : 'bg-[#00ff9d] hover:bg-white hover:scale-105'}`}
+            onClick={() => setRepoDialogOpen(true)}
+            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-400 hover:text-white transition border border-white/10 rounded"
           >
-            {isRepoAnalyzing ? "Analyzing..." : "Analyze Repository"}
+            Analyze Repository
           </button>
         </div>
-
-        {repoError && (
-          <div className="mt-3 text-sm text-red-400">{repoError}</div>
-        )}
-
-        {repoResult && (
-          <div className="mt-3 rounded-lg border border-white/10 bg-[#050505] p-3 text-sm text-gray-300">
-            <div className="font-semibold text-white">Repository: {repoResult.repoName}</div>
-            <div>Files analyzed: {repoResult.filesAnalyzed}</div>
-          </div>
-        )}
-      </div>
+      </header>
 
       {/* Upload error banner */}
       {uploadError && (
@@ -576,10 +663,10 @@ export default function EditorPage() {
       )}
 
       {/* --- MAIN SPLIT LAYOUT --- */}
-      <main className="flex-1 flex overflow-hidden">
+      <main ref={layoutRef} className="flex-1 flex overflow-hidden">
         
         {/* LEFT: CODE EDITOR */}
-        <section className="flex-1 border-r border-white/10 relative">
+        <section className="relative border-r border-white/10" style={{ flexBasis: `${editorWidth}%`, flexShrink: 0 }}>
           <Editor
             height="100%"
             language={language}
@@ -587,6 +674,11 @@ export default function EditorPage() {
             value={code}
             onChange={(val) => setCode(val)}
             options={editorOptions}
+            onMount={(editor, monaco) => {
+              editorRef.current = editor;
+              monacoRef.current = monaco;
+              applyReviewMarkers(reviewResult);
+            }}
             // Customizing the editor background to match our theme (optional tweak)
             beforeMount={(monaco) => {
               monaco.editor.defineTheme('cyberpunk', {
@@ -601,9 +693,16 @@ export default function EditorPage() {
           />
         </section>
 
+        <div
+          onMouseDown={() => {
+            draggingRef.current = true;
+          }}
+          className="w-2 cursor-col-resize bg-white/5 hover:bg-[#00ff9d]/20 transition"
+        />
+
         {/* RIGHT: AI REVIEW PANEL */}
-        <section className="w-112.5 bg-[#0a0a0a] flex flex-col border-l border-white/5 relative z-10">
-          <div className="p-4 border-b border-white/10 flex items-center justify-between bg-[#0f0f0f]">
+        <section className="flex-1 min-w-0 bg-[#0a0a0a] flex flex-col border-l border-white/5 relative z-10">
+          <div className="p-4 border-b border-white/10 flex items-center justify-between gap-3 bg-[#0f0f0f]">
             <h2 className="font-bold flex items-center gap-2">
               <Cpu className="w-4 h-4 text-[#00ff9d]" />
               Security + AI Review
@@ -665,14 +764,6 @@ export default function EditorPage() {
                   initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
                   className="space-y-6"
                 >
-                  {/* Summary Card */}
-                  <div className="p-4 rounded-lg bg-white/5 border border-white/10">
-                    <h3 className="text-xs uppercase tracking-wider text-gray-500 mb-2 font-bold">Summary</h3>
-                    <p className="text-sm text-gray-300 leading-relaxed">
-                      {reviewResult.summary || reviewResult.aiReview?.summary || "Analysis completed."}
-                    </p>
-                  </div>
-
                   {/* Security Findings */}
                   <div className="space-y-4">
                     {/* Bug Agent Findings */}
@@ -688,7 +779,11 @@ export default function EditorPage() {
                         <div className="p-4 rounded-lg bg-[#050505] border border-white/10 text-sm text-gray-500">No bug findings.</div>
                       ) : (
                         bugFindingsFromResult.map((f, idx) => (
-                          <div key={`${f.line}-${idx}`} className="p-3 mt-2 rounded bg-[#050505] border border-white/10">
+                          <div
+                            key={`${f.line}-${idx}`}
+                            onClick={() => goToLine(f.line)}
+                            className="p-3 mt-2 rounded bg-[#050505] border border-white/10 cursor-pointer hover:border-[#00ff9d]/40 transition"
+                          >
                             <div className="flex items-center justify-between mb-1">
                               <strong className="text-xs text-[#00ff9d]">{f.severity}</strong>
                               <span className="text-xs text-gray-500">Line {f.line}</span>
@@ -717,7 +812,8 @@ export default function EditorPage() {
                           initial={{ opacity: 0, x: 20 }}
                           animate={{ opacity: 1, x: 0 }}
                           transition={{ delay: index * 0.08 }}
-                          className="p-4 rounded-lg bg-[#050505] border border-white/10 hover:border-white/20 transition group"
+                            onClick={() => goToLine(issue.line)}
+                            className="p-4 rounded-lg bg-[#050505] border border-white/10 hover:border-[#00ff9d]/40 transition group cursor-pointer"
                         >
                           <div className="flex items-start justify-between mb-2">
                             <div className="flex items-center gap-2">
@@ -762,7 +858,8 @@ export default function EditorPage() {
                         initial={{ opacity: 0, x: 20 }}
                         animate={{ opacity: 1, x: 0 }}
                         transition={{ delay: index * 0.1 }}
-                        className="p-4 rounded-lg bg-[#050505] border border-white/10 hover:border-white/20 transition group"
+                        onClick={() => goToLine(issue.line)}
+                        className="p-4 rounded-lg bg-[#050505] border border-white/10 hover:border-[#00ff9d]/40 transition group cursor-pointer"
                       >
                         <div className="flex items-start justify-between mb-2">
                           <div className="flex items-center gap-2">
@@ -790,6 +887,7 @@ export default function EditorPage() {
                           <p className="text-xs text-gray-400 font-mono">{issue.fix}</p>
                         </div>
 
+                        {/* TODO: Auto Fix will replace code using AI suggestion */}
                         <button className="mt-3 w-full py-1.5 text-xs font-bold border border-[#00ff9d]/30 text-[#00ff9d] rounded hover:bg-[#00ff9d]/10 transition opacity-0 group-hover:opacity-100">
                           Auto Fix
                         </button>
@@ -798,25 +896,6 @@ export default function EditorPage() {
                     )}
                   </div>
 
-                  {repoResult && repoResult.findings?.length > 0 && (
-                    <div className="space-y-4 pt-6 border-t border-white/10">
-                      <div className="flex items-center justify-between">
-                        <h3 className="text-xs uppercase tracking-wider text-gray-500 font-bold">Repository Findings</h3>
-                        <span className="text-[10px] uppercase tracking-widest text-gray-500">
-                          {repoResult.filesAnalyzed} files
-                        </span>
-                      </div>
-
-                      {repoResult.findings.map((item) => (
-                        <div key={item.file} className="rounded-lg border border-white/10 bg-[#050505] p-4">
-                          <div className="text-xs text-gray-400 font-mono mb-2">{item.file}</div>
-                          <div className="text-sm text-gray-300">
-                            {item.securityFindings?.length ?? 0} security issue(s), {item.finalReview?.length ?? 0} AI finding(s)
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
                 </motion.div>
               )}
 
@@ -825,6 +904,56 @@ export default function EditorPage() {
         </section>
 
       </main>
+
+      <AnimatePresence>
+        {repoDialogOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4"
+            onClick={() => setRepoDialogOpen(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.96, y: 12 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.96, y: 12 }}
+              onClick={(event) => event.stopPropagation()}
+              className="w-full max-w-xl rounded-2xl border border-white/10 bg-[#0a0a0a] p-6 shadow-2xl"
+            >
+              <div className="mb-4 flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-white">Analyze Repository</h3>
+                <button onClick={() => setRepoDialogOpen(false)} className="text-sm text-gray-400 hover:text-white">Close</button>
+              </div>
+
+              <input
+                value={repoUrl}
+                onChange={(event) => setRepoUrl(event.target.value)}
+                placeholder="Paste GitHub repository link"
+                className="w-full rounded border border-white/10 bg-[#050505] px-4 py-3 text-sm text-white placeholder:text-gray-500 focus:outline-none focus:border-[#00ff9d]"
+              />
+
+              {repoError && <div className="mt-3 text-sm text-red-400">{repoError}</div>}
+
+              <div className="mt-5 flex justify-end gap-3">
+                <button
+                  onClick={() => setRepoDialogOpen(false)}
+                  className="rounded border border-white/10 px-4 py-2 text-sm text-gray-300 hover:text-white"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleAnalyzeRepo}
+                  disabled={isRepoAnalyzing}
+                  className={`rounded px-4 py-2 text-sm font-semibold text-black ${isRepoAnalyzing ? "bg-gray-600" : "bg-[#00ff9d] hover:bg-white"}`}
+                >
+                  {isRepoAnalyzing ? "Analyzing..." : "Analyze"}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
