@@ -22,6 +22,27 @@ const submissionSchema = new mongoose.Schema(
       type: String,
       default: "Untitled",
     },
+
+    jobId: {
+      type: String,
+      default: null,
+    },
+
+    status: {
+      type: String,
+      enum: ["queued", "processing", "completed", "failed"],
+      default: "queued",
+    },
+
+    reviewResult: {
+      type: mongoose.Schema.Types.Mixed,
+      default: null,
+    },
+
+    errorMessage: {
+      type: String,
+      default: null,
+    },
   },
   { timestamps: true }
 );

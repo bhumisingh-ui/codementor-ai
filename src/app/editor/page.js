@@ -1,8 +1,9 @@
 "use client";  
 
-import { useState, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import Editor from "@monaco-editor/react";
 import { motion, AnimatePresence } from "framer-motion";
+import { io } from "socket.io-client";
 import { 
   Play, 
   Upload, 
@@ -18,6 +19,8 @@ import {
   ClipboardPaste
 } from "lucide-react";
 import Link from "next/link";
+
+const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:3001";
 
 // --- MOCK DATA FOR DEMO PURPOSES ---
 const MOCK_REVIEW = {
@@ -61,6 +64,8 @@ export default function EditorPage() {
   const [code, setCode] = useState("// Write your code here or upload a file...\n\nfunction analyzeData(input) {\n  let results = [];\n  for (let i = 0; i < input.length; i++) {\n    for (let j = 0; j < input.length; j++) {\n      if (input[i] === input[j]) {\n        results.push(input[i]);\n      }\n    }\n  }\n  return results;\n}");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [reviewResult, setReviewResult] = useState(null);
+  const [reviewProgress, setReviewProgress] = useState({ stage: "idle", percent: 0, message: "" });
+  const [currentUserId, setCurrentUserId] = useState(null);
   const [repoUrl, setRepoUrl] = useState("");
   const [repoResult, setRepoResult] = useState(null);
   const [repoError, setRepoError] = useState(null);
@@ -70,6 +75,8 @@ export default function EditorPage() {
   const [copied, setCopied] = useState(false);
   const [pasted, setPasted] = useState(false);
   const fileInputRef = useRef(null);
+  const socketRef = useRef(null);
+  const activeJobIdRef = useRef(null);
 
   const EXT_TO_LANG = {
     js: "javascript",
@@ -91,13 +98,171 @@ export default function EditorPage() {
   const aiFindings = reviewResult?.finalReview || reviewResult?.issues || [];
   const bugFindingsFromResult = reviewResult?.bugFindings || [];
   const aiReviewSummary = reviewResult?.aiReview || {};
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadUser() {
+      try {
+        const res = await fetch("/api/protected");
+        if (!res.ok) {
+          return;
+        }
+
+        const data = await res.json();
+        const userId = data?.user?.id || data?.user?._id || null;
+
+        if (mounted && userId) {
+          setCurrentUserId(String(userId));
+        }
+      } catch (err) {
+        console.error("Failed to load current user", err);
+      }
+    }
+
+    loadUser();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!currentUserId) {
+      return undefined;
+    }
+
+    const socket = io(SOCKET_URL, {
+      transports: ["websocket"],
+    });
+
+    socketRef.current = socket;
+
+    socket.on("connect", () => {
+      socket.emit("review:join", { userId: currentUserId });
+    });
+
+    socket.on("review:progress", (payload = {}) => {
+      if (activeJobIdRef.current && payload.jobId !== activeJobIdRef.current) {
+        return;
+      }
+
+      setReviewProgress({
+        stage: payload.stage || "processing",
+        percent: Number(payload.progress) || 0,
+        message: payload.message || `Running ${payload.stage || "review"}...`,
+      });
+    });
+
+    socket.on("review:complete", (payload = {}) => {
+      if (activeJobIdRef.current && payload.jobId !== activeJobIdRef.current) {
+        return;
+      }
+
+      activeJobIdRef.current = null;
+      setReviewResult(payload.reviewResult || null);
+      setReviewProgress({ stage: "complete", percent: 100, message: "Review completed." });
+      setIsAnalyzing(false);
+    });
+
+    socket.on("review:failed", (payload = {}) => {
+      if (activeJobIdRef.current && payload.jobId !== activeJobIdRef.current) {
+        return;
+      }
+
+      activeJobIdRef.current = null;
+      setReviewResult({
+        score: 0,
+        summary: "Failed to analyze code.",
+        securityFindings: [],
+        aiReview: {},
+        finalReview: [
+          {
+            id: 1,
+            type: "critical",
+            line: 0,
+            msg: payload.error || "Review failed.",
+            fix: "Check worker logs or Redis connection.",
+            source: "system",
+          },
+        ],
+        issues: [
+          {
+            id: 1,
+            type: "critical",
+            line: 0,
+            msg: payload.error || "Review failed.",
+            fix: "Check worker logs or Redis connection.",
+          },
+        ],
+      });
+      setReviewProgress({ stage: "failed", percent: 0, message: payload.error || "Review failed." });
+      setIsAnalyzing(false);
+    });
+
+    return () => {
+      socket.disconnect();
+      socketRef.current = null;
+    };
+  }, [currentUserId]);
+
+  const ensureCurrentUser = async () => {
+    if (currentUserId) {
+      return currentUserId;
+    }
+
+    const res = await fetch("/api/protected");
+    if (!res.ok) {
+      return null;
+    }
+
+    const data = await res.json();
+    const userId = data?.user?.id || data?.user?._id || null;
+    if (userId) {
+      setCurrentUserId(String(userId));
+      return String(userId);
+    }
+
+    return null;
+  };
   
   // Run the review pipeline for the current code.
   const handleAnalyze = async () => {
     if (!code?.trim()) return;
 
+    const userId = await ensureCurrentUser();
+    if (!userId) {
+      setReviewResult({
+        score: 0,
+        summary: "You need to be signed in to run a review.",
+        securityFindings: [],
+        aiReview: {},
+        finalReview: [
+          {
+            id: 1,
+            type: "critical",
+            line: 0,
+            msg: "Unauthorized",
+            fix: "Log in and try again.",
+            source: "system",
+          },
+        ],
+        issues: [
+          {
+            id: 1,
+            type: "critical",
+            line: 0,
+            msg: "Unauthorized",
+            fix: "Log in and try again.",
+          },
+        ],
+      });
+      return;
+    }
+
     setIsAnalyzing(true);
     setReviewResult(null);
+    setReviewProgress({ stage: "queued", percent: 10, message: "Submitting review job..." });
 
     try {
       const res = await fetch("/api/review", {
@@ -111,14 +276,22 @@ export default function EditorPage() {
         }),
       });
 
+      const data = await res.json();
+
       if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || "Analysis failed");
+        throw new Error(data.error || "Analysis failed");
       }
 
-      const data = await res.json();
-      setReviewResult(data);
+      if (data?.reviewResult) {
+        activeJobIdRef.current = null;
+        setReviewResult(data.reviewResult);
+        setReviewProgress({ stage: "complete", percent: 100, message: "Review completed." });
+      } else {
+        activeJobIdRef.current = data?.jobId || null;
+        setReviewProgress({ stage: "queued", percent: 15, message: "Queued for background processing..." });
+      }
     } catch (err) {
+      activeJobIdRef.current = null;
       console.error(err);
       setReviewResult({
         score: 0,
@@ -145,8 +318,11 @@ export default function EditorPage() {
           },
         ],
       });
+      setReviewProgress({ stage: "failed", percent: 0, message: err.message || "Analysis failed." });
     } finally {
-      setIsAnalyzing(false);
+      if (activeJobIdRef.current === null) {
+        setIsAnalyzing(false);
+      }
     }
   };
 
@@ -469,6 +645,17 @@ export default function EditorPage() {
                   <p className="text-[#00ff9d] font-mono text-sm animate-pulse tracking-wider">
                     ANALYZING_LOGIC...
                   </p>
+                  <div className="mt-6 w-full max-w-xs">
+                    <div className="h-2 rounded-full bg-white/10 overflow-hidden">
+                      <div
+                        className="h-full bg-[#00ff9d] transition-all duration-300"
+                        style={{ width: `${Math.max(5, Math.min(100, reviewProgress.percent || 0))}%` }}
+                      />
+                    </div>
+                    <p className="mt-3 text-xs text-gray-400 text-center">
+                      {reviewProgress.message || "Waiting for the review worker..."}
+                    </p>
+                  </div>
                 </motion.div>
               )}
 
