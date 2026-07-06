@@ -5,6 +5,10 @@ import connectDB from "@/lib/db";
 import Submission from "@/models/Submission";
 import { reviewQueue } from "@/lib/queues/reviewQueue";
 import { runCodeReview } from "../../../../services/review/runCodeReview.js";
+import { handleError } from "@/lib/errorHandler";
+import { logger } from "@/lib/logger";
+import { reviewSchema } from "@/lib/validators/reviewSchema";
+import { validate } from "@/lib/validators/validate";
 
 export async function POST(req) {
   try {
@@ -12,7 +16,7 @@ export async function POST(req) {
 
     const token = req.cookies.get("token")?.value;
     if (!token) {
-      return Response.json({ error: "Unauthorized" }, { status: 401 });
+      return Response.json({ success: false, message: "Unauthorized", status: 401 }, { status: 401 });
     }
 
     let decoded;
@@ -22,11 +26,15 @@ export async function POST(req) {
       return Response.json({ error: "Invalid token" }, { status: 401 });
     }
 
-    const { code, language } = await req.json();
+    const data = await req.json();
 
-    if (!code || !language) {
-      return Response.json({ error: "Code and language are required" }, { status: 400 });
+    // Validate request input
+    const validationError = await validate(data, reviewSchema);
+    if (validationError) {
+      return Response.json(validationError, { status: 400 });
     }
+
+    const { code, language } = data;
 
     const jobId = crypto.randomUUID();
 
@@ -39,7 +47,12 @@ export async function POST(req) {
         status: "queued",
       });
     } catch (dbErr) {
-      console.error("Failed to create queued submission:", dbErr);
+      logger.error("Failed to create queued submission", {
+        route: "/api/review",
+        userId: decoded.id,
+        jobId,
+        error: dbErr.message,
+      });
     }
 
     try {
@@ -57,7 +70,12 @@ export async function POST(req) {
 
       return Response.json({ jobId, status: "queued" });
     } catch (queueErr) {
-      console.error("Queue unavailable, falling back to synchronous review:", queueErr);
+      logger.error("Queue unavailable, falling back to synchronous review", {
+        route: "/api/review",
+        userId: decoded.id,
+        jobId,
+        error: queueErr.message,
+      });
 
       const reviewResult = await runCodeReview(code, language);
 
@@ -74,13 +92,18 @@ export async function POST(req) {
           { new: true, upsert: true }
         );
       } catch (dbErr) {
-        console.error("Failed to store fallback review result:", dbErr);
+        logger.error("Failed to store fallback review result", {
+          route: "/api/review",
+          userId: decoded.id,
+          jobId,
+          error: dbErr.message,
+        });
       }
 
       return Response.json({ jobId, status: "completed", reviewResult, fallback: true });
     }
-  } catch (err) {
-    console.error(err);
-    return Response.json({ error: "Failed to analyze code", details: err.message }, { status: 500 });
+  } catch (error) {
+    const errorResponse = handleError(error, { route: "/api/review" });
+    return Response.json(errorResponse, { status: errorResponse.status });
   }
 }

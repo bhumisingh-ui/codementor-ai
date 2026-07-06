@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import jwt from "jsonwebtoken";
+import { handleError } from "@/lib/errorHandler";
 
 export async function GET() {
   // ✅ FIX: await cookies()
@@ -9,7 +10,7 @@ export async function GET() {
 
   if (!token) {
     return NextResponse.json(
-      { error: "Unauthorized" },
+      { success: false, message: "Unauthorized", status: 401 },
       { status: 401 }
     );
   }
@@ -21,10 +22,8 @@ export async function GET() {
       message: "Protected data accessed",
       user: decoded,
     });
-  } catch (err) {
-    return NextResponse.json(
-      { error: "Invalid token" },
-      { status: 401 }
-    );
+  } catch (error) {
+    const errorResponse = handleError(error, { route: "/api/protected" });
+    return NextResponse.json(errorResponse, { status: errorResponse.status });
   }
 }

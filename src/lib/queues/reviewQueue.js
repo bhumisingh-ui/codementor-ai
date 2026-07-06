@@ -1,6 +1,7 @@
 import { Queue } from "bullmq";
 
-import { redisConnection } from "@/lib/redis";
+import { redisConnection } from "../redis.js";
+import { logger } from "../logger.js";
 
 export const REVIEW_QUEUE_NAME = "review-queue";
 

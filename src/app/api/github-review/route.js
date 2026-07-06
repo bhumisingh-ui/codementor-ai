@@ -1,6 +1,9 @@
 import { runRepoSummary } from "../../../../services/review/runCodeReview.js";
 import { fetchRepoFiles } from "../../../../services/github/fetchRepoFiles.js";
 import { securityAgent } from "../../../../services/agents/securityAgent.js";
+import { handleError } from "@/lib/errorHandler";
+import { githubRepoSchema } from "@/lib/validators/githubRepoSchema";
+import { validate } from "@/lib/validators/validate";
 
 function parseGithubUrl(urlString) {
   try {
@@ -21,14 +24,19 @@ function parseGithubUrl(urlString) {
 
 export async function POST(req) {
   try {
-    const { repoUrl } = await req.json();
-    if (!repoUrl || typeof repoUrl !== "string") {
-      return Response.json({ error: "Repository URL is required." }, { status: 400 });
+    const data = await req.json();
+
+    // Validate request input
+    const validationError = await validate(data, githubRepoSchema);
+    if (validationError) {
+      return Response.json(validationError, { status: 400 });
     }
+
+    const { repoUrl } = data;
 
     const parsed = parseGithubUrl(repoUrl);
     if (!parsed) {
-      return Response.json({ error: "Invalid GitHub repository URL." }, { status: 400 });
+      return Response.json({ success: false, message: "Invalid GitHub repository URL.", status: 400 }, { status: 400 });
     }
 
     const { owner, repo } = parsed;
@@ -39,21 +47,20 @@ export async function POST(req) {
     // { rateLimit: true, message: "..." } when the GitHub API returns 403.
     if (repoFiles && repoFiles.rateLimit) {
       return Response.json(
-        { error: "GitHub API rate limit exceeded. Add a GitHub token for higher limits.", details: repoFiles.message },
+        { success: false, message: "GitHub API rate limit exceeded. Add a GitHub token for higher limits.", status: 429 },
         { status: 429 }
       );
     }
 
     if (!Array.isArray(repoFiles) || repoFiles.length === 0) {
       return Response.json(
-        { error: "No supported code files found in this repository." },
+        { success: false, message: "No supported code files found in this repository.", status: 404 },
         { status: 404 }
       );
     }
 
     // Limit to the first 5 supported files to reduce Gemini API usage.
     const selectedFiles = repoFiles.slice(0, 5);
-    console.log("Files selected:", selectedFiles.length);
 
     const securityFindings = [];
     const bugFindings = [];
@@ -75,7 +82,6 @@ export async function POST(req) {
 
     // Placeholder agents keep the pipeline shape intact while avoiding
     // extra work and API calls until they are implemented.
-    console.log("Running single Gemini summary...");
     const finalReview = await runRepoSummary(`${owner}/${repo}`, {
       filesAnalyzed: selectedFiles.length,
       securityFindings,
@@ -93,11 +99,8 @@ export async function POST(req) {
       performanceFindings,
       finalReview,
     });
-  } catch (err) {
-    console.error(err);
-    return Response.json(
-      { error: "Failed to analyze repository.", details: err.message },
-      { status: 500 }
-    );
+  } catch (error) {
+    const errorResponse = handleError(error, { route: "/api/github-review" });
+    return Response.json(errorResponse, { status: errorResponse.status });
   }
 }

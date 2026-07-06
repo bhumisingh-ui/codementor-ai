@@ -3,24 +3,28 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import User from "@/models/User";
 import connectDB from "@/lib/db";
+import { handleError } from "@/lib/errorHandler";
+import { loginSchema } from "@/lib/validators/loginSchema";
+import { validate } from "@/lib/validators/validate";
 
 export async function POST(req) {
   try {
+    const data = await req.json();
+
+    // Validate request input
+    const validationError = await validate(data, loginSchema);
+    if (validationError) {
+      return NextResponse.json(validationError, { status: 400 });
+    }
+
     await connectDB();
 
-    const { email, password } = await req.json();
-
-    if (!email || !password) {
-      return NextResponse.json(
-        { error: "Email and password required" },
-        { status: 400 }
-      );
-    }
+    const { email, password } = data;
 
     const user = await User.findOne({ email });
     if (!user) {
       return NextResponse.json(
-        { error: "Invalid credentials" },
+        { success: false, message: "Invalid credentials", status: 401 },
         { status: 401 }
       );
     }
@@ -28,7 +32,7 @@ export async function POST(req) {
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
       return NextResponse.json(
-        { error: "Invalid credentials" },
+        { success: false, message: "Invalid credentials", status: 401 },
         { status: 401 }
       );
     }
@@ -56,11 +60,8 @@ export async function POST(req) {
     });
 
     return response;
-  } catch (err) {
-    console.error(err);
-    return NextResponse.json(
-      { error: "Login failed" },
-      { status: 500 }
-    );
+  } catch (error) {
+    const errorResponse = handleError(error, { route: "/api/auth/login" });
+    return NextResponse.json(errorResponse, { status: errorResponse.status });
   }
 }
