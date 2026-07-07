@@ -54,6 +54,20 @@ export default function SignupPage() {
         </div>
 
         <div className="relative rounded-2xl border border-white/10 bg-[#0A0A0A] p-6 shadow-[0_0_30px_rgba(0,255,157,0.05)]">
+          <button
+            type="button"
+            onClick={() => (window.location.href = "/api/auth/google/start")}
+            className="mb-4 w-full rounded-lg border border-white/10 bg-white/5 py-3 text-sm font-medium text-white hover:bg-white/10 transition"
+          >
+            Sign up with Google
+          </button>
+
+          <div className="flex items-center gap-3 mb-4">
+            <div className="h-px flex-1 bg-white/10" />
+            <span className="text-xs uppercase tracking-[0.2em] text-gray-500">or</span>
+            <div className="h-px flex-1 bg-white/10" />
+          </div>
+
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-1 gap-4">
               <div>

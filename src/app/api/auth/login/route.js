@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
-import jwt from "jsonwebtoken";
 import User from "@/models/User";
 import connectDB from "@/lib/db";
+import { applyAuthCookie, signAuthToken } from "@/lib/auth";
 
 export async function POST(req) {
   try {
@@ -25,6 +25,13 @@ export async function POST(req) {
       );
     }
 
+    if (!user.password) {
+      return NextResponse.json(
+        { error: "This account uses Google sign-in" },
+        { status: 401 }
+      );
+    }
+
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
       return NextResponse.json(
@@ -33,11 +40,7 @@ export async function POST(req) {
       );
     }
 
-    const token = jwt.sign(
-      { id: user._id, email: user.email, username: user.username }, // we did this to have username available in the token for Navbar
-      process.env.JWT_SECRET,
-      { expiresIn: "7d" }
-    );
+    const token = signAuthToken(user);
 
     const response = NextResponse.json({
       user: {
@@ -47,15 +50,7 @@ export async function POST(req) {
       },
     });
 
-    response.cookies.set("token", token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "strict",
-      maxAge: 60 * 60 * 24 * 7,
-      path: "/",
-    });
-
-    return response;
+    return applyAuthCookie(response, token);
   } catch (err) {
     console.error(err);
     return NextResponse.json(

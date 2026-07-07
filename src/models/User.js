@@ -19,8 +19,27 @@ const UserSchema = new mongoose.Schema(
     },
     password: {
       type: String,
-      required: true,
       minlength: 6,
+    },
+    provider: {
+      type: String,
+      enum: ["local", "google"],
+      default: "local",
+    },
+    googleId: {
+      type: String,
+      unique: true,
+      sparse: true,
+    },
+    emailVerified: {
+      type: Boolean,
+      default: false,
+    },
+    resetTokenHash: {
+      type: String,
+    },
+    resetTokenExpiresAt: {
+      type: Date,
     },
   },
   { timestamps: true }

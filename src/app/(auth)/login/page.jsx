@@ -2,12 +2,16 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 
 export default function LoginPage() {
+  const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  const googleError = searchParams.get("google") === "failed" ? "Google sign-in failed. Try again." : "";
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -47,6 +51,20 @@ export default function LoginPage() {
         </div>
 
         <div className="relative rounded-2xl border border-white/10 bg-[#0A0A0A] p-6">
+          <button
+            type="button"
+            onClick={() => (window.location.href = "/api/auth/google/start")}
+            className="mb-4 w-full rounded-lg border border-white/10 bg-white/5 py-3 text-sm font-medium text-white hover:bg-white/10 transition"
+          >
+            Continue with Google
+          </button>
+
+          <div className="flex items-center gap-3 mb-4">
+            <div className="h-px flex-1 bg-white/10" />
+            <span className="text-xs uppercase tracking-[0.2em] text-gray-500">or</span>
+            <div className="h-px flex-1 bg-white/10" />
+          </div>
+
           <form onSubmit={handleSubmit} className="space-y-4">
             <input
               type="email"
@@ -66,7 +84,7 @@ export default function LoginPage() {
               className="w-full rounded-lg bg-[#141414] border px-3 py-3"
             />
 
-            {error && <p className="text-red-400 text-sm">{error}</p>}
+            {(error || googleError) && <p className="text-red-400 text-sm">{error || googleError}</p>}
 
             <button
               type="submit"
@@ -76,6 +94,12 @@ export default function LoginPage() {
               {loading ? "Signing in..." : "Sign In"}
             </button>
           </form>
+
+          <div className="text-right mt-3">
+            <Link href="/forgot-password" className="text-sm text-gray-400 hover:text-[#00ff9d] transition">
+              Forgot password?
+            </Link>
+          </div>
 
           <p className="text-center text-sm mt-4">
             Don’t have an account?{" "}
