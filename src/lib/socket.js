@@ -1,6 +1,7 @@
 import { createServer } from "node:http";
 
 import { Server } from "socket.io";
+import { logger } from "./logger.js";
 
 let httpServer = null;
 let io = null;
@@ -23,17 +24,24 @@ export function startSocketServer() {
   });
 
   io.on("connection", (socket) => {
+    logger.info("User connected", { service: "socket-server", userId: socket.id });
+
     socket.on("review:join", ({ userId }) => {
       if (!userId) {
         return;
       }
 
       socket.join(String(userId));
+      logger.info("User joined review room", { service: "socket-server", userId });
+    });
+
+    socket.on("disconnect", () => {
+      logger.info("User disconnected", { service: "socket-server", userId: socket.id });
     });
   });
 
   httpServer.listen(getSocketPort(), () => {
-    console.log(`Review socket server listening on ${getSocketPort()}`);
+    logger.info(`Review socket server listening on ${getSocketPort()}`, { service: "socket-server" });
   });
 
   return io;

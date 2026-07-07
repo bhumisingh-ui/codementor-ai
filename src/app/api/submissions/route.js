@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import jwt from "jsonwebtoken";
 import connectDB from "@/lib/db";
 import Submission from "@/models/Submission";
+import { handleError } from "@/lib/errorHandler";
 
 export async function POST(req) {
   try {
@@ -11,7 +12,7 @@ export async function POST(req) {
     const token = req.cookies.get("token")?.value;
     if (!token) {
       return NextResponse.json(
-        { error: "Unauthorized" },
+        { success: false, message: "Unauthorized", status: 401 },
         { status: 401 }
       );
     }
@@ -24,7 +25,7 @@ export async function POST(req) {
 
     if (!code) {
       return NextResponse.json(
-        { error: "Code is required" },
+        { success: false, message: "Code is required", status: 400 },
         { status: 400 }
       );
     }
@@ -41,11 +42,8 @@ export async function POST(req) {
       { message: "Submission saved", submission },
       { status: 201 }
     );
-  } catch (err) {
-    console.error(err);
-    return NextResponse.json(
-      { error: "Failed to save submission" },
-      { status: 500 }
-    );
+  } catch (error) {
+    const errorResponse = handleError(error, { route: "/api/submissions" });
+    return NextResponse.json(errorResponse, { status: errorResponse.status });
   }
 }

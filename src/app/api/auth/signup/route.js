@@ -2,18 +2,22 @@ import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import User from "@/models/User";
 import connectDB from "@/lib/db";
+import { handleError } from "@/lib/errorHandler";
+import { signupSchema } from "@/lib/validators/signupSchema";
+import { validate } from "@/lib/validators/validate";
 
 export async function POST(req) {
   try {
-    await connectDB();
-    const { username, email, password } = await req.json();
+    const data = await req.json();
 
-    if (!username || !email || !password) {
-      return NextResponse.json(
-        { error: "All fields are required" },
-        { status: 400 }
-      );
+    // Validate request input
+    const validationError = await validate(data, signupSchema);
+    if (validationError) {
+      return NextResponse.json(validationError, { status: 400 });
     }
+
+    await connectDB();
+    const { username, email, password } = data;
 
     const existingUser = await User.findOne({
       $or: [{ email }, { username }],
@@ -21,7 +25,7 @@ export async function POST(req) {
 
     if (existingUser) {
       return NextResponse.json(
-        { error: "User already exists" },
+        { success: false, message: "User already exists", status: 409 },
         { status: 409 }
       );
     }
@@ -38,12 +42,8 @@ export async function POST(req) {
       { message: "User created successfully" },
       { status: 201 }
     );
-  } catch (err) {
-  console.error("SIGNUP ERROR:", err);
-
-  return NextResponse.json(
-    { error: err.message || "Signup failed" },
-    { status: 500 }
-  );
-}
+  } catch (error) {
+    const errorResponse = handleError(error, { route: "/api/auth/signup" });
+    return NextResponse.json(errorResponse, { status: errorResponse.status });
+  }
 }

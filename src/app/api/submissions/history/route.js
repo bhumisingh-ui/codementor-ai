@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import jwt from "jsonwebtoken";
 import connectDB from "@/lib/db";
 import Submission from "@/models/Submission";
+import { handleError } from "@/lib/errorHandler";
 
 export async function GET(req) {
   try {
@@ -11,7 +12,7 @@ export async function GET(req) {
     const token = req.cookies.get("token")?.value;
     if (!token) {
       return NextResponse.json(
-        { error: "Unauthorized" },
+        { success: false, message: "Unauthorized", status: 401 },
         { status: 401 }
       );
     }
@@ -27,11 +28,8 @@ export async function GET(req) {
       .limit(50);
 
     return NextResponse.json({ submissions });
-  } catch (err) {
-    console.error(err);
-    return NextResponse.json(
-      { error: "Failed to fetch submissions" },
-      { status: 500 }
-    );
+  } catch (error) {
+    const errorResponse = handleError(error, { route: "/api/submissions/history" });
+    return NextResponse.json(errorResponse, { status: errorResponse.status });
   }
 }

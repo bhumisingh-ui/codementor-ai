@@ -110,10 +110,15 @@ export default function EditorPage() {
     const model = editor?.getModel();
 
     if (model && monaco) {
+      // Clear markers set by the review system
       monaco.editor.setModelMarkers(model, "review", []);
     }
   }, []);
 
+  /**
+   * Extract all findings from review result
+   * Handles multiple finding sources: finalReview, bugFindings, securityFindings
+   */
   const getReviewFindings = (review = {}) => {
     const safeReview = review || {};
     const finalReview = Array.isArray(safeReview.finalReview) ? safeReview.finalReview : [];
@@ -128,6 +133,21 @@ export default function EditorPage() {
     ];
   };
 
+  /**
+   * Apply Monaco markers for code findings
+   * 
+   * How it works:
+   * 1. Converts findings into Monaco markers
+   * 2. Maps severity (critical/high -> Error, medium -> Warning, low -> Hint)
+   * 3. Stores findings in a ref for hover provider lookup
+   * 4. Registers hover provider to show details on hover
+   * 5. Displays red underlines for bugs, yellow for security issues
+   * 
+   * Severity Colors:
+   * - Error (Red): Bugs, critical/high severity issues
+   * - Warning (Yellow): Medium severity security issues
+   * - Hint (Blue/Gray): Low severity issues
+   */
   const applyReviewMarkers = useCallback((review = null) => {
     const editor = editorRef.current;
     const monaco = monacoRef.current;
@@ -137,6 +157,7 @@ export default function EditorPage() {
       return;
     }
 
+    // Map severity levels to Monaco severity
     const severityMap = {
       critical: monaco.MarkerSeverity.Error,
       high: monaco.MarkerSeverity.Error,
@@ -144,31 +165,97 @@ export default function EditorPage() {
       low: monaco.MarkerSeverity.Hint,
     };
 
+    // Store findings in a map for hover provider lookup
+    const findingsMap = new Map();
+
     const markers = getReviewFindings(review)
       .map((finding) => {
         const lineNumber = Math.max(1, Number(finding?.line) || 0);
-        const type = String(finding?.type || "bug").toLowerCase();
+        const issueType = String(finding?.type || "bug").toLowerCase();
         const severity = String(finding?.severity || "medium").toLowerCase();
         const message = String(finding?.message || finding?.msg || "").trim();
         const suggestion = String(finding?.suggestion || finding?.fix || "").trim();
+        const rule = String(finding?.rule || "").trim();
 
         if (!message) {
           return null;
         }
 
-        return {
+        // Create marker with message for Monaco
+        const marker = {
           startLineNumber: lineNumber,
           startColumn: 1,
           endLineNumber: lineNumber,
-          endColumn: 1,
-          message: `[${type === "security" ? "Security" : "Bug"}] ${message}${suggestion ? `\n\nFix:\n${suggestion}` : ""}`,
+          endColumn: 500,
+          message: `[${issueType === "security" ? "Security" : "Bug"}] ${message}`,
           severity: severityMap[severity] || monaco.MarkerSeverity.Information,
+          source: "CodeMentor",
         };
+
+        // Store finding details for hover provider
+        const key = `${lineNumber}`;
+        if (!findingsMap.has(key)) {
+          findingsMap.set(key, []);
+        }
+        findingsMap.get(key).push({
+          type: issueType,
+          message,
+          suggestion,
+          rule,
+          severity,
+        });
+
+        return marker;
       })
       .filter(Boolean);
 
+    // Set markers in the editor
     monaco.editor.setModelMarkers(model, "review", markers);
-  }, []);
+
+    // Register hover provider for detailed tooltips
+    // This shows issue details when user hovers over marked lines
+    const hoverProvider = monaco.languages.registerHoverProvider(language, {
+      provideHover: (model, position) => {
+        const key = String(position.lineNumber);
+        const findings = findingsMap.get(key);
+
+        if (!findings || findings.length === 0) {
+          return null;
+        }
+
+        // Format finding details into hover content
+        const contents = findings.map((f) => {
+          const typeLabel = f.type === "security" ? "🔒 Security Issue" : "🐛 Bug";
+          const lines = [
+            `**${typeLabel}**`,
+            ``,
+            f.message,
+          ];
+
+          if (f.suggestion) {
+            lines.push(``, `**Suggested Fix:**`, f.suggestion);
+          }
+
+          if (f.rule) {
+            lines.push(``, `*Rule: ${f.rule}*`);
+          }
+
+          return { value: lines.join("\n") };
+        });
+
+        return {
+          contents,
+          range: new monaco.Range(position.lineNumber, 1, position.lineNumber, 500),
+        };
+      },
+    });
+
+    // Store provider for cleanup if needed
+    if (!window.__reviewHoverProviders) {
+      window.__reviewHoverProviders = [];
+    }
+    window.__reviewHoverProviders.push(hoverProvider);
+  }, [language]);
 
   const goToLine = useCallback((line) => {
     const editor = editorRef.current;
@@ -266,6 +353,9 @@ export default function EditorPage() {
       activeJobIdRef.current = null;
       const nextReview = payload.reviewResult || null;
 
+      // Update review state and apply markers immediately
+      // Markers show red underlines for bugs, yellow for security issues
+      // Hover over marked lines to see issue details and suggestions
       setReviewResult(nextReview);
       applyReviewMarkers(nextReview);
       setReviewProgress({ stage: "complete", percent: 100, message: "Review completed." });
@@ -334,6 +424,10 @@ export default function EditorPage() {
   };
   
   // Run the review pipeline for the current code.
+  // After analysis completes:
+  // - Immediate results: markers apply via setReviewResult trigger
+  // - Async results: markers apply via Socket.io review:complete event
+  // - Markers are cleared when code changes via useEffect
   const handleAnalyze = async () => {
     if (!code?.trim()) return;
 
@@ -537,10 +631,14 @@ export default function EditorPage() {
   };
 
   useEffect(() => {
+    // Clear markers whenever code changes
+    // This prevents stale findings from previous analysis
     clearReviewMarkers();
   }, [code, clearReviewMarkers]);
 
   useEffect(() => {
+    // Apply markers when review result changes
+    // Works for both immediate results and async Socket.io updates
     applyReviewMarkers(reviewResult);
   }, [reviewResult, applyReviewMarkers]);
 
@@ -675,8 +773,12 @@ export default function EditorPage() {
             onChange={(val) => setCode(val)}
             options={editorOptions}
             onMount={(editor, monaco) => {
+              // Store editor and monaco references for marker operations
               editorRef.current = editor;
               monacoRef.current = monaco;
+              
+              // Apply any existing markers (if review was already completed)
+              // Hover provider is registered here during marker application
               applyReviewMarkers(reviewResult);
             }}
             // Customizing the editor background to match our theme (optional tweak)

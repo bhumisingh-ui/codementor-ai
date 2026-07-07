@@ -1,11 +1,12 @@
-const { Worker } = require("bullmq");
-const { loadEnvConfig } = require("@next/env");
+import { Worker } from "bullmq";
+import nextEnv from "@next/env";
 
 (async () => {
-  loadEnvConfig(process.cwd());
+  nextEnv.loadEnvConfig(process.cwd()); //
 
   const { redisConnection } = await import("../src/lib/redis.js");
   const { startSocketServer, emitReviewEvent } = await import("../src/lib/socket.js");
+  const { logger } = await import("../src/lib/logger.js");
   const { bugAgent } = await import("../services/agents/bugAgent.js");
   const { securityAgent } = await import("../services/agents/securityAgent.js");
   const { synthesizerAgent } = await import("../services/review/synthesizerAgent.js");
@@ -19,7 +20,11 @@ const { loadEnvConfig } = require("@next/env");
     async (job) => {
       const { code, language, userId } = job.data || {};
 
+      logger.info("Job started", { service: "review-worker", jobId: job.id, userId });
+
       await connectDB();
+
+      logger.info("Bug Agent started", { service: "review-worker", jobId: job.id, userId });
 
       await job.updateProgress({ stage: "bug-agent", progress: 25 });
       emitReviewEvent(userId, "review:progress", {
@@ -33,6 +38,8 @@ const { loadEnvConfig } = require("@next/env");
         securityAgent(code, language),
       ]);
 
+      logger.info("Security Agent started", { service: "review-worker", jobId: job.id, userId });
+
       await job.updateProgress({ stage: "security-agent", progress: 65 });
       emitReviewEvent(userId, "review:progress", {
         jobId: job.id,
@@ -42,6 +49,8 @@ const { loadEnvConfig } = require("@next/env");
 
       const performanceFindings = [];
       // performanceAgent() coming later
+
+      logger.info("Synthesizer started", { service: "review-worker", jobId: job.id, userId });
 
       await job.updateProgress({ stage: "synthesize", progress: 90 });
       emitReviewEvent(userId, "review:progress", {
@@ -74,6 +83,8 @@ const { loadEnvConfig } = require("@next/env");
         { new: true, upsert: true }
       );
 
+      logger.info("Job completed", { service: "review-worker", jobId: job.id, userId });
+
       emitReviewEvent(userId, "review:complete", {
         jobId: job.id,
         reviewResult,
@@ -88,11 +99,11 @@ const { loadEnvConfig } = require("@next/env");
   );
 
   worker.on("completed", (job) => {
-    console.log(`Review job completed: ${job.id}`);
+    logger.info("Review job completed", { service: "review-worker", jobId: job.id });
   });
 
   worker.on("failed", async (job, err) => {
-    console.error(`Review job failed: ${job?.id}`, err);
+    logger.error("Job failed", { service: "review-worker", jobId: job?.id, error: err.message });
 
     try {
       await connectDB();
