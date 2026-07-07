@@ -105,9 +105,9 @@ export default function AuroraCard({
 }) {
   return (
     <StyledWrapper style={{
-      ["--card-w"]: `${width}px`,
-      ["--card-h"]: `${height}px`,
-      ["--aurora-size"]: `${Math.max(width, height)}px`,
+      ["--card-w"]: typeof width === "string" ? width : `${width}px`,
+      ["--card-h"]: typeof height === "string" ? height : `${height}px`,
+      ["--aurora-size"]: `${Math.max(parseInt(width) || 260, parseInt(height) || 160)}px`,
       ["--aurora-start"]: auroraStart || "rgba(0, 255, 157, 0.85)",
       ["--aurora-mid"]: auroraMid || "rgba(6, 182, 212, 0.35)",
     }}>

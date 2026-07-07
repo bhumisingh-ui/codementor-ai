@@ -45,4 +45,7 @@ const UserSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+UserSchema.index({ resetTokenHash: 1 }, { sparse: true });
+UserSchema.index({ resetTokenExpiresAt: 1 });
+
 export default mongoose.models.User || mongoose.model("User", UserSchema);

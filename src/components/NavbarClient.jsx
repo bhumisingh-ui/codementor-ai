@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 
 function Avatar({ name }) {
@@ -13,13 +13,56 @@ function Avatar({ name }) {
 }
 
 export default function NavbarClient({ user }) {
+  const [currentUser, setCurrentUser] = useState(user);
   const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadUser() {
+      try {
+        const res = await fetch("/api/protected", {
+          credentials: "include",
+          cache: "no-store",
+        });
+
+        if (!mounted) return;
+
+        if (!res.ok) {
+          setCurrentUser(null);
+          return;
+        }
+
+        const data = await res.json();
+        const authUser = data?.user;
+        setCurrentUser(
+          authUser
+            ? {
+                id: authUser.id,
+                username: authUser.username || authUser.email?.split("@")[0] || "User",
+                email: authUser.email,
+              }
+            : null
+        );
+      } catch {
+        if (mounted) setCurrentUser(null);
+      }
+    }
+
+    loadUser();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   async function logout() {
     try {
-      await fetch("/api/auth/logout", { method: "POST" });
+      await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
+      setCurrentUser(null);
+      setOpen(false);
       window.location.href = "/";
-    } catch (e) {
+    } catch {
       // noop
     }
   }
@@ -33,7 +76,7 @@ export default function NavbarClient({ user }) {
           </span>
         </Link>
 
-        {!user ? (
+        {!currentUser ? (
           <div className="flex items-center gap-6">
             <Link href="/login" className="text-sm font-medium text-gray-400 hover:text-white transition">
               Log In
@@ -45,8 +88,8 @@ export default function NavbarClient({ user }) {
         ) : (
           <div className="relative">
             <button onClick={() => setOpen((o) => !o)} className="flex items-center gap-3">
-              <Avatar name={user.username} />
-              <span className="text-sm text-gray-300">{user.username}</span>
+              <Avatar name={currentUser.username} />
+              <span className="text-sm text-gray-300">{currentUser.username}</span>
             </button>
             {open && (
               <div className="absolute right-0 mt-2 w-40 rounded-md border border-white/10 bg-[#0A0A0A] shadow-lg">

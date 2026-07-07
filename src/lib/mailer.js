@@ -1,37 +1,62 @@
-export async function sendPasswordResetEmail({ to, resetUrl }) {
-  const apiKey = process.env.RESEND_API_KEY;
-  const from = process.env.AUTH_EMAIL_FROM;
+import nodemailer from "nodemailer";
 
-  if (!apiKey || !from) {
+function logPasswordResetFallback(resetUrl, reason) {
+  console.warn(`[password-reset] Email was not sent (${reason}).`);
+
+  if (process.env.ALLOW_DEV_RESET_LINK_LOG === "true" && process.env.NODE_ENV !== "production") {
+    console.log(`[password-reset] Development reset link: ${resetUrl}`);
+  }
+}
+
+function hasEmailConfig() {
+  return Boolean(process.env.EMAIL_USER && process.env.EMAIL_PASS);
+}
+
+function createTransporter() {
+  return nodemailer.createTransport({
+    service: "gmail",
+    auth: {
+      user: process.env.EMAIL_USER,
+      pass: process.env.EMAIL_PASS,
+    },
+  });
+}
+
+export async function sendPasswordResetEmail({ to, resetUrl }) {
+  if (!hasEmailConfig()) {
     if (process.env.NODE_ENV !== "production") {
-      console.log(`[password-reset] ${to}: ${resetUrl}`);
+      logPasswordResetFallback(resetUrl, "missing EMAIL_USER or EMAIL_PASS");
       return;
     }
 
     throw new Error("Email provider is not configured");
   }
 
-  const res = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      from,
+  try {
+    await createTransporter().sendMail({
+      from: `"CodeMentor AI" <${process.env.EMAIL_USER}>`,
       to,
-      subject: "Reset your Codementor AI password",
+      subject: "Reset your CodeMentor AI password",
       html: `
+        <h2>Password Reset</h2>
         <p>We received a request to reset your password.</p>
-        <p><a href="${resetUrl}">Reset password</a></p>
-        <p>If you did not request this, you can ignore this email.</p>
+        <p>
+          <a href="${resetUrl}"
+             style="background:#00e676;color:#000;padding:12px 18px;
+                    text-decoration:none;border-radius:6px;">
+            Reset Password
+          </a>
+        </p>
+        <p>If you didn't request this, you can safely ignore this email.</p>
       `,
       text: `Reset your password: ${resetUrl}`,
-    }),
-  });
+    });
+  } catch (error) {
+    if (process.env.NODE_ENV !== "production" && error?.code === "EAUTH") {
+      logPasswordResetFallback(resetUrl, "Gmail authentication failed");
+      return;
+    }
 
-  if (!res.ok) {
-    const details = await res.text();
-    throw new Error(`Failed to send email: ${details}`);
+    throw error;
   }
 }
