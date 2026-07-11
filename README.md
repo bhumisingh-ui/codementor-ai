@@ -193,9 +193,6 @@ This project is licensed under the **MIT License**.
 
 <div align="center">
 
-### 💬 Let's Connect
-
-[![GitHub](https://img.shields.io/badge/GitHub-bhumisingh--ui-181717?style=for-the-badge&logo=github)](https://github.com/bhumisingh-ui)
 
 *If CodeMentor AI helped you, consider giving it a ⭐ — it really helps!*
 
